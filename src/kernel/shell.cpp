@@ -612,11 +612,17 @@ static void cmd_update(int argc, char** argv) {
     if (argc >= 2 && !kstd::strcmp(argv[1], "info")) {
         const updater::Config& c = updater::config();
         printk(" Source: http://%s:%u%s\n", c.host, static_cast<unsigned>(c.port), c.path);
+        if (kstd::strncmp(c.host, "raw.githubusercontent.com", 24) == 0) {
+            printk(" GitHub raw: https://raw.githubusercontent.com%s\n", c.path);
+        }
         printk(" Usage: update | update check | update set <host> <port> <path>\n");
+        printk("        update github <path>  [configure GitHub raw as source]\n");
+        printk("        update submit  [download + install new kernel update]\n");
         return;
     }
 
-    if (argc >= 5 && !kstd::strcmp(argv[1], "set")) {
+    if (argc >= 4 && !kstd::strcmp(argv[1], "set")) {
+        // Legacy format: set <host> <port> <path>
         uint32_t port = 0;
         for (const char* d = argv[3]; *d >= '0' && *d <= '9'; ++d)
             port = port * 10 + static_cast<uint32_t>(*d - '0');
@@ -625,8 +631,31 @@ static void cmd_update(int argc, char** argv) {
         return;
     }
 
+    if (argc >= 3 && !kstd::strcmp(argv[1], "github")) {
+        // Set GitHub raw as the update source
+        const char* path = (argc >= 4) ? argv[3] : "/upstreams/aetheros.bin";
+        updater::set_config("raw.githubusercontent.com", 80, path);
+        printk(" GitHub raw source set to: https://raw.githubusercontent.com%s\n", path);
+        printk(" Update source saved.\n");
+        return;
+    }
+
     char msg[128];
     msg[0] = '\0';
+
+    if (argc >= 2 && !kstd::strcmp(argv[1], "submit")) {
+        printk(" [UPDATE] Applying update from %s:%u%s\n", updater::config().host,
+               updater::config().port, updater::config().path);
+        updater::Result r = updater::apply(msg, sizeof(msg));
+        if (r == updater::Result::Ok) {
+            printk(" %s. Reboot to run the new kernel.\n", msg);
+        } else if (r == updater::Result::UpToDate) {
+            printk(" Already up to date - %s.\n", msg);
+        } else {
+            printk(" Update failed: %s\n", updater::result_name(r));
+        }
+        return;
+    }
 
     if (argc >= 2 && !kstd::strcmp(argv[1], "check")) {
         updater::Result r = updater::fetch_verify(msg, sizeof(msg));
