@@ -2398,6 +2398,89 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
     };
 
     auto handle_terminal_key = [&](char c) {
+        // Handle arrow key sequences (ESC [ A/B/C/D)
+        static char seq_buf[4] = {0};
+        static int seq_len = 0;
+
+        if (seq_len > 0) {
+            // Collect escape sequence
+            seq_buf[seq_len++] = c;
+            if (seq_len >= 3) {
+                // Full escape sequence received: ESC [ X
+                if (seq_buf[0] == 27 && seq_buf[1] == '[' && seq_buf[2] >= 65 && seq_buf[2] <= 70) {
+                    switch (seq_buf[2]) {
+                        case 65: { // Up arrow: previous command in history
+                            // Navigate through history
+                            static bool hist_loaded = false;
+                            if (!hist_loaded) {
+                                kstd::strncpy(term.input_buf, term.input_buf, sizeof(term.input_buf) - 1);
+                                term.input_len = kstd::strlen(term.input_buf);
+                                hist_loaded = true;
+                            }
+
+                            // Find previous command
+                            for (size_t i = term.line_count - 2; i >= 0; i--) {
+                                const char* ltext = term.lines[i].text;
+                                size_t len = kstd::strlen(ltext);
+                                if (len > 17 && kstd::strncmp(ltext, "aether@x86_64:~$ ", 17) == 0) {
+                                    char cmd_history[128];
+                                    kstd::strncpy(cmd_history, ltext + 17, sizeof(cmd_history) - 1);
+                                    if (kstd::strcmp(cmd_history, term.input_buf) != 0) {
+                                        kstd::strcpy(term.input_buf, cmd_history);
+                                        term.input_len = kstd::strlen(term.input_buf);
+                                        term.cursor_pos = term.input_len;
+                                        break;
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                        case 66: { // Down arrow: next command in history
+                                                    // Move forward in history
+                            char cmd_history[128];
+                            kstd::strncpy(cmd_history, term.input_buf, sizeof(cmd_history) - 1);
+                            cmd_history[sizeof(cmd_history) - 1] = '\0';
+
+                            // Find the next occurrence after the current one
+                            for (size_t i = 0; i < term.line_count; ++i) {
+                                const char* ltext = term.lines[i].text;
+                                size_t len = kstd::strlen(ltext);
+                                if (len > 17 && kstd::strncmp(ltext, "aether@x86_64:~$ ", 17) == 0) {
+                                    kstd::strncpy(cmd_history, ltext + 17, sizeof(cmd_history) - 1);
+                                    cmd_history[sizeof(cmd_history) - 1] = '\0';
+                                    if (kstd::strcmp(cmd_history, term.input_buf) == 0) {
+                                        // This is the current command, move to the next one
+                                        if (i < term.line_count - 1) {
+                                            // Found the next one
+                                            kstd::strcpy(term.input_buf, cmd_history);
+                                            term.input_len = kstd::strlen(term.input_buf);
+                                            term.cursor_pos = term.input_len;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                        case 67: { // Right arrow: move cursor right
+                            if (term.cursor_pos < term.input_len) {
+                                term.cursor_pos++;
+                            }
+                            break;
+                        }
+                        case 68: { // Left arrow: move cursor left
+                            if (term.cursor_pos > 0) {
+                                term.cursor_pos--;
+                            }
+                        }
+                    }
+                }
+                seq_len = 0;
+                seq_buf[0] = '\0';
+            }
+            return;
+        }
+
         if (c == '\n' || c == '\r') {
             execute_terminal_command();
         } else if (c == '\b' || c == 8 || c == 127) {
@@ -2406,18 +2489,29 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
                 term.input_buf[term.input_len] = '\0';
                 term.cursor_pos = term.input_len;
             }
-        } else if (c == 27) { // ESC
-            if (term.input_len > 0) {
-                term.input_len = 0;
-                term.input_buf[0] = '\0';
-                term.cursor_pos = 0;
-            } else {
-                launch_win3();
-            }
-        } else if (c == '3' && term.input_len == 0 && (!win3.visible || win3.minimized)) {
-            launch_win3();
-        } else if (c == '4' && term.input_len == 0 && (!win4.visible || win4.minimized)) {
-            launch_win4();
+        } else if (c == 27) { // ESC - start of escape sequence
+            seq_len = 0;
+            seq_buf[0] = '\0';
+        } else if (c == '\t') {
+            // Tab key: cycle focus (handled by parent)
+        } else if (c == 28) { // Ctrl+\
+        } else if (c == 29) { // Ctrl+)
+        } else if (c == 30) { // Ctrl+(
+        } else if (c == 31) { // Ctrl+?
+            // Ctrl+? = backspace (already handled above)
+        } else if (c == 127) {
+            // DEL (already handled above)
+        } else if (c == 10) { // LF (line feed)
+            execute_terminal_command();
+        } else if (c == 12) { // Ctrl+L: clear screen
+            term.clear();
+            term.add_line("AetherOS Interactive Desktop Terminal [v1.0]", gfx::Colors::Teal);
+            term.add_line("Type 'help' for commands, 'fetch' for system overview.", gfx::Colors::LightGrey);
+            term.add_line("", gfx::Colors::White);
+        } else if (c == 3) { // Ctrl+C: clear input
+            term.input_buf[0] = '\0';
+            term.input_len = 0;
+            term.cursor_pos = 0;
         } else if (c >= 32 && c <= 126) {
             if (term.input_len < sizeof(term.input_buf) - 1) {
                 term.input_buf[term.input_len++] = c;
