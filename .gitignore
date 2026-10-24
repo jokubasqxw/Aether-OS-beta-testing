@@ -1,4 +1,9 @@
 build/
-release/aetheros.bin
-release/aetheros32.bin
-release/aetheros.iso
+# Release artifacts (kernel binaries) - tracked in git
+!release/aetheros.bin
+!release/aetheros32.bin
+!release/aetheros.iso
+# Disk image (128MB, generated, skip LFS) - ignore to avoid LFS requirements
+release/disk.img
+# Local config files
+update.conf
