@@ -14,10 +14,7 @@ SECTIONS {
 
     .rodata : ALIGN(4K) {
         *(.rodata*)
-    }
-
-    .data : ALIGN(4K) {
-        *(.data*)
+        PROVIDE(kernel_version = "AetherOS 64-bit (Beta) v1.0.0");
     }
 
     .bss : ALIGN(4K) {
