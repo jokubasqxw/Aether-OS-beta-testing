@@ -633,7 +633,7 @@ static void cmd_update(int argc, char** argv) {
 
     if (argc >= 3 && !kstd::strcmp(argv[1], "github")) {
         // Set GitHub raw as the update source
-        const char* path = (argc >= 4) ? argv[3] : "/upstreams/aetheros.bin";
+        const char* path = (argc >= 3) ? argv[2] : "/upstreams/aetheros.bin";
         updater::set_config("raw.githubusercontent.com", 80, path);
         printk(" GitHub raw source set to: https://raw.githubusercontent.com%s\n", path);
         printk(" Update source saved.\n");
