@@ -305,3 +305,64 @@ survive reboots.
 | `apps install <name>` | Download and install/update a single app |
 | `apps update` | Install or update every app in the catalogue |
 | `browser app://<name>` | Open an installed app in the browser (GUI) |
+
+---
+
+## Launch & Development
+
+### Boot the OS (QEMU)
+
+```bash
+# Simple launch (default: 4GB RAM, std VGA, serial console)
+./run
+
+# Custom memory
+AETHEROS_MEM=8192M ./run
+
+# Fullscreen
+AETHEROS_FULLSCREEN=true ./run
+```
+
+Or with `make`:
+
+```bash
+make run          # Standard launch
+make run-bga      # Standard VGA with VRAM override
+make run-vmware   # VMware SVGA adapter
+make run-curses   # Text-based curses UI
+make run-iso      # Boot from ISO image
+```
+
+### Updating the OS
+
+```bash
+# Build new kernel
+make all
+
+# Push to GitHub (for updates)
+git add -A && git commit -m "update" && git push origin main
+
+# Configure updater (in OS shell)
+update github /release/aetheros.bin
+
+# Check for updates
+update check
+
+# Apply update (downloads + installs new kernel)
+update submit
+```
+
+### Files
+
+| Path | Description |
+| --- | --- |
+| `release/aetheros.bin` | 64-bit multiboot kernel |
+| `release/aetheros32.bin` | 32-bit multiboot kernel |
+| `release/aetheros.iso` | Bootable ISO image |
+| `tools/mkdisk.sh` | Creates `build/disk.img` (128MB) with GRUB + FAT16 |
+
+---
+
+## Contributing
+
+...

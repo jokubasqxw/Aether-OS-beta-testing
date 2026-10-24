@@ -1,0 +1,47 @@
+#!/bin/bash
+# AetherOS - Simple launcher
+# Usage: ./run (defaults: 4GB RAM, std VGA, serial console)
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Check for kernel artifacts
+if [ ! -f "release/aetheros.bin" ] || [ ! -f "release/aetheros32.bin" ]; then
+    echo "Building kernel... (this may take a minute)"
+    make all -j"$(nproc)"
+fi
+
+# Default QEMU settings
+MEM="${AETHEROS_MEM:-4096M}"
+VGA="${AETHEROS_VGA:-std}"
+FULLSCREEN="${AETHEROS_FULLSCREEN:-false}"
+DISPLAY="${AETHEROS_DISPLAY:-stdio}"
+
+# Build QEMU command
+QEMU_CMD=(qemu-system-x86_64
+    -kernel release/aetheros32.bin
+    -serial stdio
+    -m "$MEM"
+    -vga "$VGA"
+    -netdev user,id=net0
+    -device e1000,netdev=net0
+    -display "$DISPLAY"
+)
+
+# Add fullscreen if requested
+if [ "$FULLSCREEN" = "true" ]; then
+    QEMU_CMD+=("-full-screen")
+fi
+
+# Add audio if configured
+if [ -n "$AETHEROS_AUDIO" ]; then
+    QEMU_CMD+=("-audiodev" "$AETHEROS_AUDIO" "-device" "AC97,audiodev=snd0")
+fi
+
+echo "=== AetherOS ==="
+echo "Memory: $MEM | VGA: $VGA | Display: $DISPLAY"
+echo "Press Ctrl+A then C for QEMU monitor"
+echo "======================================"
+exec "${QEMU_CMD[@]}"

@@ -149,10 +149,10 @@ QEMU_VGA ?= -vga std -global VGA.vgamem_mb=32
 QEMU_MEM ?= 4096M
 
 run: $(KERNEL_ELF32)
-	qemu-system-x86_64 -kernel $(KERNEL_ELF32) -serial stdio -m $(QEMU_MEM) $(QEMU_VGA) -netdev user,id=net0 -device e1000,netdev=net0 $(QEMU_AUDIO)
+	./run
 
 run-bga: $(KERNEL_ELF32)
-	qemu-system-x86_64 -kernel $(KERNEL_ELF32) -serial stdio -m $(QEMU_MEM) -vga std -global VGA.vgamem_mb=32 -netdev user,id=net0 -device e1000,netdev=net0 $(QEMU_AUDIO)
+	./run AETHEROS_VGA=std AETHEROS_MEM=4096M && exit 0
 
 run-vmware: $(KERNEL_ELF32)
 	qemu-system-x86_64 -kernel $(KERNEL_ELF32) -serial stdio -m $(QEMU_MEM) -vga vmware -netdev user,id=net0 -device e1000,netdev=net0 $(QEMU_AUDIO)
