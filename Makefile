@@ -21,7 +21,7 @@ LDFLAGS = -m elf_x86_64 -T linker.ld -z max-page-size=0x1000 --gc-sections
 
 STRIP = strip --strip-all
 
-BUILD_DIR = build
+BUILD_DIR = release
 ISO_DIR = iso
 
 # Source files
