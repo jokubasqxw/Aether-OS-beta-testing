@@ -1,4 +1,5 @@
 #include "gui.hpp"
+#include "../arch/x86_64/io.hpp"
 #include "gfx.hpp"
 #include "keyboard.hpp"
 #include "mouse.hpp"
@@ -2388,6 +2389,18 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
                 browser_navigate(argv[1], true);
             }
             term.add_line("Aether Web Browser launched.", gfx::Colors::Green);
+        } else if (!kstd::strcmp(cmd, "reboot")) {
+            term.add_line("Rebooting system...", gfx::Colors::Yellow);
+            arch::outb(0x64, 0xFE);
+            asm volatile("lidt 0; int $3");
+        } else if (!kstd::strcmp(cmd, "shutdown") || !kstd::strcmp(cmd, "poweroff") || !kstd::strcmp(cmd, "exit")) {
+            term.add_line("Shutting down system...", gfx::Colors::Yellow);
+            arch::outw(0x604, 0x2000);
+            arch::outw(0xB004, 0x2000);
+            arch::outw(0x4004, 0x3400);
+            term.add_line("System halted. It is now safe to turn off your machine.", gfx::Colors::White);
+            arch::cli();
+            while (true) arch::hlt();
         } else {
             char unk[80];
             kstd::strcpy(unk, "Unknown command '");
