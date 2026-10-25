@@ -700,11 +700,14 @@ static void apply_decl(Style& st, const char* prop, size_t plen, const char* val
         }
     } else if (ci("font-size")) {
         int px = parse_px(val, vlen);
-        if (px >= 96) st.font_scale = 5;
-        else if (px >= 64) st.font_scale = 4;
-        else if (px >= 36) st.font_scale = 3;
-        else if (px >= 28) st.font_scale = 2;
-        else if (px >= 20) st.font_scale = 1;
+        // Clamp font sizes to reasonable range (base 8x16 font)
+        // Map CSS px to scale: 1x=16px, 2x=32px, 3x=48px, etc.
+        if (px <= 16) st.font_scale = 0;
+        else if (px <= 24) st.font_scale = 1;
+        else if (px <= 40) st.font_scale = 2;
+        else if (px <= 56) st.font_scale = 3;
+        else if (px <= 72) st.font_scale = 4;
+        else st.font_scale = 5;
     } else if (ci("text-align")) {
         st.has_align = true;
         if (ci_starts(val, vlen, "center")) st.align = 1;
@@ -963,7 +966,7 @@ static void add_wrapped_text(Document* doc, const char* text, int& cur_x, int& c
         box->x = cur_x;
         box->y = cur_y;
         box->w = word_px;
-        box->h = is_btn ? 22 : 16 * scale;
+        box->h = is_btn ? 22 : 18 * scale;
         box->scale = static_cast<uint8_t>(scale);
         box->fg_color = fg;
         box->is_bold = bold;
