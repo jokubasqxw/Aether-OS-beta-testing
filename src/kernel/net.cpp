@@ -907,7 +907,7 @@ int http_get(const uint8_t server_ip[4], uint16_t port, const char* path, char* 
     kstd::strcpy(req + kstd::strlen(req), (path && *path) ? path : "/");
     kstd::strcpy(req + kstd::strlen(req), " HTTP/1.0\r\nHost: ");
     kstd::strcpy(req + kstd::strlen(req), (host_name && *host_name) ? host_name : ip_str);
-    kstd::strcpy(req + kstd::strlen(req), "\r\nUser-Agent: AetherOS/1.0 (x86_64)\r\nAccept: text/html,*/*\r\nAccept-Encoding: ");
+    kstd::strcpy(req + kstd::strlen(req), "\r\nUser-Agent: AetherOS/1.0 (x86_64)\r\nAccept: application/octet-stream\r\nAccept-Encoding: ");
     kstd::strcpy(req + kstd::strlen(req), (accept_encoding && *accept_encoding) ? accept_encoding : "gzip, deflate");
     kstd::strcpy(req + kstd::strlen(req), "\r\nConnection: close\r\n\r\n");
 
