@@ -1408,7 +1408,7 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
         restart_x = install_x + bw + 16;
     };
 
-    auto draw_win6_content = [&](const WindowState& win) {
+        auto draw_win6_content = [&](const WindowState& win) {
         int cx = win.x + 2;
         int cy = win.y + 28;
         int cw = win.w - 4;
@@ -1445,8 +1445,12 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
         kstd::strcpy(buf + kstd::strlen(buf), cfg.path);
         gfx::draw_string(buf, win.x + 20, win.y + 98, 0xFF9FB8CC);
 
-        gfx::draw_string("Installing replaces the boot kernel and keeps a rollback snapshot.",
-                         win.x + 20, win.y + 126, 0xFF7F97A8);
+        int win_bottom = win.y + win.h;
+        // Clip text to window bounds - skip drawing if outside window
+        if (win.y + 126 < win.y + win.h) {
+            gfx::draw_string("Installing replaces the boot kernel and keeps a rollback snapshot.",
+                             win.x + 20, win.y + 126, 0xFF7F97A8);
+        }
 
         int check_x, install_x, restart_x, by, bw, bh;
         settings_btn_geom(win, check_x, install_x, restart_x, by, bw, bh);
