@@ -675,6 +675,105 @@ static void cmd_update(int argc, char** argv) {
     }
 }
 
+static bool install_nonkernel_file(const char* src, char* msg, size_t msg_len) {
+    // Resolve the source: "afs:<name>" (AetherFS), "fat:<name>" (FAT16 boot
+    // partition), or a bare filename treated as a file on the FAT16 partition.
+    const char* source = src;
+    bool from_fat = true;
+    if (kstd::strncmp(src, "fat:", 4) == 0) {
+        source = src + 4;
+    } else if (kstd::strncmp(src, "afs:", 4) == 0) {
+        source = src + 4;
+        from_fat = false;
+    }
+
+    if (!fat16::mounted() && !aetherfs::mounted()) {
+        printk("[install] No disk / filesystem mounted\n");
+        return false;
+    }
+
+    if (from_fat) {
+        if (!fat16::mounted()) {
+            printk("[install] FAT16 boot partition not mounted\n");
+            return false;
+        }
+        if (fat16::file_size(source) <= 0) {
+            printk("[install] Source not found: %s\n", src);
+            return false;
+        }
+    } else {
+        if (!aetherfs::mounted()) {
+            printk("[install] AetherFS not mounted\n");
+            return false;
+        }
+        if (aetherfs::file_size(source) <= 0) {
+            printk("[install] Source not found: %s\n", src);
+            return false;
+        }
+    }
+
+    int src_size = from_fat ? fat16::file_size(source) : aetherfs::file_size(source);
+
+    char* buf = new char[static_cast<size_t>(src_size)];
+    if (!buf) {
+        printk("[install] Out of memory\n");
+        return false;
+    }
+
+    int n = from_fat
+                ? fat16::read_file(source, buf, static_cast<size_t>(src_size))
+                : aetherfs::read_file(source, buf, static_cast<size_t>(src_size));
+    if (n <= 0) {
+        delete[] buf;
+        printk("[install] Could not read source: %s\n", src);
+        return false;
+    }
+
+    // Installed files live in the runtime-visible AetherFS root. Unlike the
+    // FAT16 boot partition (which only holds the boot kernel), AetherFS is the
+    // in-memory filesystem the running system reads at runtime, so a write
+    // takes effect immediately and never requires a reboot. Kernel updates are
+    // still the job of updater::apply() and always need a reboot.
+    if (!aetherfs::write_file(source, buf, static_cast<size_t>(n))) {
+        delete[] buf;
+        printk("[install] Write failed (out of space?)\n");
+        return false;
+    }
+    delete[] buf;
+
+    printk("[install] Installed '%s' (%d bytes) -> AetherFS\n", src, n);
+    return true;
+}
+
+static void cmd_install(int argc, char** argv) {
+    vga::set_color(vga::Color::LightCyan, vga::Color::Black);
+    printk("--- Install Non-Kernel File ---\n");
+    vga::set_color(vga::Color::White, vga::Color::Black);
+
+    const char* path = nullptr;
+    if (argc >= 3 && !kstd::strcmp(argv[1], "now")) {
+        path = argv[2];
+    } else if (argc >= 2) {
+        path = argv[1];
+    }
+
+    if (!path) {
+        printk("Usage: install now <path>   |   install <path>\n");
+        printk("  <path>  afs:<name>   source is AetherFS\n");
+        printk("          fat:<name>   source is the FAT16 boot partition\n");
+        printk("          <name>       source is a file already on FAT16\n");
+        return;
+    }
+
+    char msg[128];
+    msg[0] = '\0';
+    if (install_nonkernel_file(path, msg, sizeof(msg))) {
+        printk(" Install completed (no reboot required).\n");
+    } else {
+        printk(" Install failed.\n");
+    }
+}
+
 static void cmd_apps(int argc, char** argv) {
     vga::set_color(vga::Color::LightCyan, vga::Color::Black);
     printk("--- AetherOS App Hub ---\n");
@@ -1636,6 +1735,8 @@ static void execute_line(char* line) {
         cmd_mem();
     } else if (!kstd::strcmp(cmd, "disk") || !kstd::strcmp(cmd, "disks") || !kstd::strcmp(cmd, "lsblk")) {
         cmd_disk();
+    } else if (!kstd::strcmp(cmd, "install")) {
+        cmd_install(argc, argv);
     } else if (!kstd::strcmp(cmd, "afs")) {
         cmd_afs(argc, argv);
     } else if (!kstd::strcmp(cmd, "fat")) {

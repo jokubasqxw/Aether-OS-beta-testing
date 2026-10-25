@@ -1391,12 +1391,13 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
     };
 
     // --- Settings (win6) ----------------------------------------------------
-    auto settings_btn_geom = [&](const WindowState& win, int& check_x, int& install_x, int& by, int& bw, int& bh) {
-        bw = 172;
+    auto settings_btn_geom = [&](const WindowState& win, int& check_x, int& install_x, int& restart_x, int& by, int& bw, int& bh) {
+        bw = 156;
         bh = 34;
         by = win.y + 206;
         check_x = win.x + 20;
         install_x = check_x + bw + 16;
+        restart_x = install_x + bw + 16;
     };
 
     auto draw_win6_content = [&](const WindowState& win) {
@@ -1422,6 +1423,11 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
         }
         gfx::draw_string(buf, win.x + 20, win.y + 74, gfx::Colors::LightGrey);
 
+        // Version string displayed next to the kernel image info.
+        gfx::draw_string("Version: v1.0.0",
+                         win.x + 20 + kstd::strlen(buf) * 8 + 8,
+                         win.y + 74, 0xFFB8C8D4);
+
         const updater::Config& cfg = updater::config();
         buf[0] = '\0';
         kstd::strcpy(buf, "Update source: ");
@@ -1434,8 +1440,8 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
         gfx::draw_string("Installing replaces the boot kernel and keeps a rollback snapshot.",
                          win.x + 20, win.y + 126, 0xFF7F97A8);
 
-        int check_x, install_x, by, bw, bh;
-        settings_btn_geom(win, check_x, install_x, by, bw, bh);
+        int check_x, install_x, restart_x, by, bw, bh;
+        settings_btn_geom(win, check_x, install_x, restart_x, by, bw, bh);
 
         bool can_update = fat16::mounted() && aetherfs::mounted();
         gfx::fill_rect(check_x, by, bw, bh, can_update ? 0xFF1F4A63 : 0xFF2A2F33);
@@ -1447,6 +1453,10 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
         gfx::draw_rect(install_x, by, bw, bh, can_update ? 0xFF66D46B : 0xFF4A555C);
         gfx::draw_string("Install Update", install_x + 28, by + 10,
                          can_update ? gfx::Colors::White : 0xFF777F85);
+
+        gfx::fill_rect(restart_x, by, bw, bh, 0xFF2E7D32);
+        gfx::draw_rect(restart_x, by, bw, bh, 0xFF66D46B);
+        gfx::draw_string("Restart", restart_x + 50, by + 10, gfx::Colors::White);
 
         uint32_t scol = (settings_status_kind == 1) ? gfx::Colors::Green
                        : (settings_status_kind == 2) ? 0xFFFF7070
@@ -1461,8 +1471,8 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
     // Returns true if a Settings control consumed the click.
     auto handle_settings_click = [&](int mx, int my) -> bool {
         if (!win6.visible || win6.minimized) return false;
-        int check_x, install_x, by, bw, bh;
-        settings_btn_geom(win6, check_x, install_x, by, bw, bh);
+        int check_x, install_x, restart_x, by, bw, bh;
+        settings_btn_geom(win6, check_x, install_x, restart_x, by, bw, bh);
 
         if (mx >= check_x && mx < check_x + bw && my >= by && my < by + bh) {
             char msg[128];
@@ -1498,6 +1508,12 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
                 settings_status_kind = 2;
             }
             full_redraw_needed = true;
+            return true;
+        }
+        if (mx >= restart_x && mx < restart_x + bw && my >= by && my < by + bh) {
+            // Restart: reset the CPU via the 8042 keyboard controller.
+            arch::outb(0x64, 0xFE);
+            asm volatile("lidt 0; int $3");
             return true;
         }
         return false;
@@ -3646,19 +3662,6 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
                         start_menu_open = false;
                         click_handled = true;
                     } else if (rel >= 218 && rel < 244) {
-                        cycle_fps();
-                        click_handled = true;
-                    } else if (rel >= 244 && rel < 270) {
-                        current_bar_pos = (current_bar_pos == BAR_TOP) ? BAR_BOTTOM : BAR_TOP;
-                        reset_window_layout();
-                        wp_cache_valid = false;
-                        full_redraw_needed = true;
-                        click_handled = true;
-                    } else if (rel >= 270 && rel < 296) {
-                        current_button_style = (current_button_style == BUTTONS_CIRCLES) ? BUTTONS_SQUARES : BUTTONS_CIRCLES;
-                        full_redraw_needed = true;
-                        click_handled = true;
-                    } else if (rel >= 296 && rel <= 324) {
                         break; // Exit to Console clicked!
                     }
                 } else {
@@ -3986,18 +3989,10 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
             gfx::draw_string(win6.visible && !win6.minimized ? "> [Focus] Settings"       : "> [Show] Settings",       16, sm_y + 172, win6.visible ? gfx::Colors::White : gfx::Colors::Cyan);
             gfx::draw_string(win7.visible && !win7.minimized ? "> [Focus] App Hub"        : "> [Show] App Hub",        16, sm_y + 198, win7.visible ? gfx::Colors::White : gfx::Colors::Cyan);
 
-            gfx::draw_line(12, sm_y + 224, 6 + sm_w - 12, sm_y + 224, 0xFF3A4A66);
-
-            char sm_hz[40];
-            kstd::strcpy(sm_hz, "> Refresh: ");
-            kstd::strcpy(sm_hz + kstd::strlen(sm_hz), fps_labels[current_fps_idx]);
-            gfx::draw_string(sm_hz, 16, sm_y + 232, gfx::Colors::Cyan);
-
-            gfx::draw_string(current_bar_pos == BAR_TOP ? "> Menu Bar: Top  [Key: B]" : "> Menu Bar: Bottom [Key: B]", 16, sm_y + 258, gfx::Colors::Yellow);
-            gfx::draw_string(current_button_style == BUTTONS_CIRCLES ? "> Buttons: Circles [Key: T]" : "> Buttons: Squares [Key: T]", 16, sm_y + 284, gfx::Colors::Yellow);
-
-            gfx::draw_line(12, sm_y + 314, 6 + sm_w - 12, sm_y + 314, 0xFF3A4A66);
-            gfx::draw_string("> Exit to Console Shell", 16, sm_y + 320, gfx::Colors::Red);
+            // Exit to Console Shell (final menu item, immediately after the
+            // launchers; the settings toggles below were removed as redundant
+            // with the Settings window).
+            gfx::draw_string("> Exit to Console Shell", 16, sm_y + 224, gfx::Colors::Red);
         }
 
         // Real-Time Clock
