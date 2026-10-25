@@ -3692,10 +3692,8 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
                         } else if (i == 2) {
                             launch_win3();
                         } else if (i == 3) {
-                            win1.visible = true; win1.minimized = false; bring_to_front(&win1);
-                        } else if (i == 4) {
                             launch_win5();
-                        } else if (i == 5) {
+                        } else if (i == 4) {
                             launch_win6();
                         } else {
                             launch_win7();
