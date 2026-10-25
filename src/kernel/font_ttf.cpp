@@ -111,6 +111,63 @@ int text_width(const char* text, int font_size) {
     return width;
 }
 
+// Glyph cache entry
+struct GlyphCache {
+    int codepoint;
+    int font_size;
+    int w, h;
+    int xoff, yoff;
+    int advance;
+    uint8_t* bitmap;
+    bool valid;
+};
+
+static GlyphCache glyph_cache[256];
+static int glyph_cache_count = 0;
+
+static GlyphCache* find_cached_glyph(int codepoint, int font_size) {
+    for (int i = 0; i < glyph_cache_count; i++) {
+        if (glyph_cache[i].valid && glyph_cache[i].codepoint == codepoint && glyph_cache[i].font_size == font_size) {
+            return &glyph_cache[i];
+        }
+    }
+    return nullptr;
+}
+
+static GlyphCache* cache_glyph(int codepoint, int font_size) {
+    // Find empty slot or evict oldest
+    int slot = -1;
+    for (int i = 0; i < 256; i++) {
+        if (!glyph_cache[i].valid) { slot = i; break; }
+    }
+    if (slot == -1) {
+        slot = 0; // evict first
+        if (glyph_cache[slot].bitmap) {
+            stbtt_FreeBitmap(glyph_cache[slot].bitmap, nullptr);
+        }
+    }
+    
+    float scale = stbtt_ScaleForPixelHeight(&font_info, (float)font_size);
+    int advance, lsb;
+    stbtt_GetCodepointHMetrics(&font_info, codepoint, &advance, &lsb);
+    
+    int w, h, xoff, yoff;
+    unsigned char* bitmap = stbtt_GetCodepointBitmap(&font_info, scale, scale, codepoint, &w, &h, &xoff, &yoff);
+    
+    glyph_cache[slot].codepoint = codepoint;
+    glyph_cache[slot].font_size = font_size;
+    glyph_cache[slot].w = w;
+    glyph_cache[slot].h = h;
+    glyph_cache[slot].xoff = xoff;
+    glyph_cache[slot].yoff = yoff;
+    glyph_cache[slot].advance = (int)(advance * scale);
+    glyph_cache[slot].bitmap = bitmap;
+    glyph_cache[slot].valid = true;
+    
+    if (slot >= glyph_cache_count) glyph_cache_count = slot + 1;
+    return &glyph_cache[slot];
+}
+
 int render_text(const char* text, uint32_t* buffer, int buf_w, int buf_h,
                 int x, int y, uint32_t fg_color, int font_size) {
     if (!initialized || !text || !buffer) return 0;
@@ -123,25 +180,21 @@ int render_text(const char* text, uint32_t* buffer, int buf_w, int buf_h,
     int cx = x;
     int prev = 0;
     for (const char* p = text; *p; p++) {
-        int advance, lsb;
-        stbtt_GetCodepointHMetrics(&font_info, *p, &advance, &lsb);
+        GlyphCache* gc = find_cached_glyph((unsigned char)*p, font_size);
+        if (!gc) gc = cache_glyph((unsigned char)*p, font_size);
         
         if (prev) {
             cx += (int)(stbtt_GetCodepointKernAdvance(&font_info, prev, *p) * scale);
         }
         
-        int w, h, xoff, yoff;
-        unsigned char* bitmap = stbtt_GetCodepointBitmap(&font_info, scale, scale, *p, &w, &h, &xoff, &yoff);
-        
-        if (bitmap) {
-            for (int j = 0; j < h; j++) {
-                for (int i = 0; i < w; i++) {
-                    int px = cx + xoff + i;
-                    int py = baseline + yoff + j;
+        if (gc && gc->bitmap) {
+            for (int j = 0; j < gc->h; j++) {
+                for (int i = 0; i < gc->w; i++) {
+                    int px = cx + gc->xoff + i;
+                    int py = baseline + gc->yoff + j;
                     if (px >= 0 && px < buf_w && py >= 0 && py < buf_h) {
-                        uint8_t alpha = bitmap[j * w + i];
+                        uint8_t alpha = gc->bitmap[j * gc->w + i];
                         if (alpha > 0) {
-                            // Blend with existing pixel
                             uint32_t bg = buffer[py * buf_w + px];
                             uint8_t br = (bg >> 16) & 0xFF;
                             uint8_t bg_g = (bg >> 8) & 0xFF;
@@ -158,10 +211,9 @@ int render_text(const char* text, uint32_t* buffer, int buf_w, int buf_h,
                     }
                 }
             }
-            stbtt_FreeBitmap(bitmap, nullptr);
         }
         
-        cx += (int)(advance * scale);
+        cx += gc ? gc->advance : 0;
         prev = *p;
     }
     

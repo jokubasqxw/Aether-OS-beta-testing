@@ -403,6 +403,8 @@ struct Style {
     bool underline = false;
     bool no_underline = false;
     bool display_none = false;
+    bool display_flex = false;
+    bool display_grid = false;
     bool has_border = false;  uint32_t border = 0;
     bool has_pad = false;     int pad = 0;
     bool has_width = false;   int width = 0;  bool width_pct = false;
@@ -426,6 +428,8 @@ static void style_merge(Style& dst, const Style& s) {
     if (s.underline) { dst.underline = true; dst.no_underline = false; }
     if (s.no_underline) { dst.no_underline = true; dst.underline = false; }
     if (s.display_none) dst.display_none = true;
+    if (s.display_flex) dst.display_flex = true;
+    if (s.display_grid) dst.display_grid = true;
     if (s.has_border) { dst.has_border = true; dst.border = s.border; }
     if (s.has_pad) { dst.has_pad = true; dst.pad = s.pad; }
     if (s.has_width) { dst.has_width = true; dst.width = s.width; dst.width_pct = s.width_pct; }
@@ -644,6 +648,8 @@ static void apply_decl(Style& st, const char* prop, size_t plen, const char* val
         if (ci_contains(val, vlen, "none")) { st.no_underline = true; st.underline = false; }
     } else if (ci("display")) {
         if (ci_starts(val, vlen, "none")) st.display_none = true;
+        if (ci_starts(val, vlen, "flex")) st.display_flex = true;
+        if (ci_starts(val, vlen, "grid")) st.display_grid = true;
     } else if (ci("border") || ci("border-color") || ci_starts(prop, plen, "border-")) {
         if (ci_contains(val, vlen, "none")) {
             st.has_border = true; st.border = 0; // zero-width: keep 0 meaning "no visible border"
