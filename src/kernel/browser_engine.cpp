@@ -895,6 +895,10 @@ static LayoutBox* add_box(Document* doc) {
     box->type = BoxType::TEXT;
     box->text[0] = '\0';
     box->link_url[0] = '\0';
+    box->img_src[0] = '\0';
+    box->img_pixels = nullptr;
+    box->img_w = 0;
+    box->img_h = 0;
     box->fg_color = gfx::Colors::White;
     box->bg_color = 0;
     box->bg_color2 = 0;
@@ -1968,86 +1972,19 @@ void render(const Document& doc, int vx, int vy, int vw, int vh, int scroll_y) {
 
         // Render image if box has an img_src
         if (box.img_src[0] != '\\0') {
-            // Build full URL (resolve relative URLs against document URL)
-            char full_url[256];
-            if (box.img_src[0] == '/') {
-                const char* u = doc.current_url;
-                bool is_https = (!kstd::strncmp(u, "https://", 8));
-                const char* after_proto = is_https ? (u + 8) : (u + 7);
-                const char* slash = kstd::strchr(after_proto, '/');
-                size_t host_len = slash ? static_cast<size_t>(slash - after_proto) : kstd::strlen(after_proto);
-                if (host_len > 200) host_len = 200;
-                if (is_https) kstd::strcpy(full_url, "https://");
-                else kstd::strcpy(full_url, "http://");
-                kstd::strncpy(full_url + kstd::strlen(full_url), after_proto, host_len);
-                full_url[kstd::strlen(full_url) + host_len] = '\\0';
-                // append img_src
-                size_t fl = kstd::strlen(full_url);
-                size_t sl = kstd::strlen(box.img_src);
-                if (fl + sl < sizeof(full_url)) {
-                    for (size_t i = 0; i < sl; ++i) full_url[fl + i] = box.img_src[i];
-                    full_url[fl + sl] = '\\0';
-                }
+            // Draw cached image if available, otherwise placeholder
+            if (box.img_pixels) {
+                gfx::Image img = {};
+                img.pixels = box.img_pixels;
+                img.width = box.img_w;
+                img.height = box.img_h;
+                gfx::draw_image_scaled(img, screen_x, screen_y, box.w, box.h);
             } else {
-                kstd::strcpy(full_url, box.img_src);
-            }
-            
-            // Parse URL
-            const char* u = full_url;
-            bool is_https = false;
-            if (!kstd::strncmp(u, "http://", 7)) u += 7;
-            else if (!kstd::strncmp(u, "https://", 8)) { u += 8; is_https = true; }
-            
-            const char* slash = kstd::strchr(u, '/');
-            size_t authority_len = slash ? static_cast<size_t>(slash - u) : kstd::strlen(u);
-            char host[128];
-            size_t host_len2 = authority_len;
-            if (host_len2 >= 128) host_len2 = 127;
-            kstd::strncpy(host, u, host_len2);
-            host[host_len2] = '\\0';
-            
-            uint16_t port = is_https ? 443 : 80;
-            char path[256];
-            if (slash) { kstd::strncpy(path, slash, sizeof(path) - 1); path[sizeof(path)-1] = '\\0'; }
-            else { path[0] = '/'; path[1] = '\\0'; }
-            
-            uint8_t target_ip[4];
-            bool resolved = net::parse_ip(host, target_ip);
-            if (!resolved && net::is_available()) resolved = net::dns_resolve(host, target_ip, 3000);
-            
-            if (resolved) {
-                constexpr size_t cap = 65536;
-                char* buf = static_cast<char*>(kmalloc(cap));
-                if (buf) {
-                    int n = 0;
-                    if (is_https) n = tls::https_get(target_ip, port, host, path, buf, cap - 1, 10000);
-                    else n = net::http_get(target_ip, port, path, buf, cap - 1, 4000, host);
-                    
-                    if (n > 0) {
-                        // Find body (after \\r\\n\\r\\n)
-                        char* body = nullptr;
-                        for (int i = 0; i < n - 3; ++i) {
-                            if (buf[i] == '\\r' && buf[i+1] == '\\n' && buf[i+2] == '\\r' && buf[i+3] == '\\n') {
-                                body = buf + i + 4;
-                                break;
-                            }
-                        }
-                        if (body) {
-                            size_t body_len = n - (body - buf);
-                            gfx::Image img = {};
-                            if (gfx::load_image_from_memory(reinterpret_cast<const uint8_t*>(body), body_len, &img)) {
-                                gfx::draw_image_scaled(img, screen_x, screen_y, box.w, box.h);
-                                delete[] img.pixels;
-                            }
-                        }
-                    }
-                    kfree(buf);
+                gfx::fill_rect(screen_x, screen_y, box.w, box.h, 0xFF13202E);
+                gfx::draw_rect(screen_x, screen_y, box.w, box.h, 0xFF2C4A63);
+                if (box.text[0]) {
+                    gfx::draw_string(box.text, screen_x + 4, screen_y + (box.h - 10) / 2, box.fg_color);
                 }
-            }
-            
-            // Fallback placeholder
-            if (box.text[0]) {
-                gfx::draw_string(box.text, screen_x + 4, screen_y + (box.h - 10) / 2, box.fg_color);
             }
             continue;
         }
@@ -3285,6 +3222,90 @@ bool load_url(Document* doc, const char* url, int viewport_width) {
             }
 
             kfree(http_buf);
+            // Pre-fetch images for all boxes with img_src
+            if (have_body) {
+                for (size_t bi = 0; bi < doc->box_count; ++bi) {
+                    LayoutBox& b = doc->boxes[bi];
+                    if (b.img_src[0] == '\\0' || b.img_pixels) continue;
+                    
+                    // Build full URL
+                    char full_url[256];
+                    if (b.img_src[0] == '/') {
+                        const char* u = doc->current_url;
+                        bool is_https = (!kstd::strncmp(u, "https://", 8));
+                        const char* after_proto = is_https ? (u + 8) : (u + 7);
+                        const char* slash = kstd::strchr(after_proto, '/');
+                        size_t host_len = slash ? static_cast<size_t>(slash - after_proto) : kstd::strlen(after_proto);
+                        if (host_len > 200) host_len = 200;
+                        if (is_https) kstd::strcpy(full_url, "https://");
+                        else kstd::strcpy(full_url, "http://");
+                        size_t fl = kstd::strlen(full_url);
+                        for (size_t i = 0; i < host_len && fl + i < sizeof(full_url) - 1; ++i) full_url[fl + i] = after_proto[i];
+                        full_url[fl + host_len] = '\\0';
+                        size_t fl2 = kstd::strlen(full_url);
+                        size_t sl = kstd::strlen(b.img_src);
+                        if (fl2 + sl < sizeof(full_url)) {
+                            for (size_t i = 0; i < sl; ++i) full_url[fl2 + i] = b.img_src[i];
+                            full_url[fl2 + sl] = '\\0';
+                        }
+                    } else {
+                        kstd::strcpy(full_url, b.img_src);
+                    }
+                    
+                    // Parse URL and fetch
+                    const char* u = full_url;
+                    bool is_https = false;
+                    if (!kstd::strncmp(u, "http://", 7)) u += 7;
+                    else if (!kstd::strncmp(u, "https://", 8)) { u += 8; is_https = true; }
+                    
+                    const char* slash = kstd::strchr(u, '/');
+                    size_t authority_len = slash ? static_cast<size_t>(slash - u) : kstd::strlen(u);
+                    char host[128];
+                    size_t hl = authority_len;
+                    if (hl >= 128) hl = 127;
+                    kstd::strncpy(host, u, hl);
+                    host[hl] = '\\0';
+                    
+                    uint16_t port = is_https ? 443 : 80;
+                    char path[256];
+                    if (slash) { kstd::strncpy(path, slash, sizeof(path) - 1); path[sizeof(path)-1] = '\\0'; }
+                    else { path[0] = '/'; path[1] = '\\0'; }
+                    
+                    uint8_t target_ip[4];
+                    bool resolved = net::parse_ip(host, target_ip);
+                    if (!resolved && net::is_available()) resolved = net::dns_resolve(host, target_ip, 3000);
+                    
+                    if (resolved) {
+                        constexpr size_t cap = 65536;
+                        char* buf = static_cast<char*>(kmalloc(cap));
+                        if (buf) {
+                            int n = 0;
+                            if (is_https) n = tls::https_get(target_ip, port, host, path, buf, cap - 1, 10000);
+                            else n = net::http_get(target_ip, port, path, buf, cap - 1, 4000, host);
+                            
+                            if (n > 0) {
+                                char* body = nullptr;
+                                for (int i = 0; i < n - 3; ++i) {
+                                    if (buf[i] == '\\r' && buf[i+1] == '\\n' && buf[i+2] == '\\r' && buf[i+3] == '\\n') {
+                                        body = buf + i + 4;
+                                        break;
+                                    }
+                                }
+                                if (body) {
+                                    size_t body_len = n - (body - buf);
+                                    gfx::Image img = {};
+                                    if (gfx::load_image_from_memory(reinterpret_cast<const uint8_t*>(body), body_len, &img)) {
+                                        b.img_pixels = img.pixels;
+                                        b.img_w = img.width;
+                                        b.img_h = img.height;
+                                    }
+                                }
+                            }
+                            kfree(buf);
+                        }
+                    }
+                }
+            }
             if (have_body) return true;
             if (hit_https) {
                 render_tls_note(doc, host);
