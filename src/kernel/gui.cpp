@@ -532,10 +532,14 @@ static void draw_app_icon(int cx, int cy, int r, int kind, bool hovered) {
         gfx::draw_line(cx + s, cy - s, cx + s + 7, cy - s - 7, glyph);
         gfx::draw_line(cx - s, cy + s, cx - s + 7, cy + s - 7, glyph);
         gfx::draw_line(cx + s, cy + s, cx + s + 7, cy + s - 7, glyph);
-    } else if (kind == 3) {             // Monitor (3-bar chart)
-        gfx::fill_rect(cx - 15, cy + 3, 9, 13, glyph);
-        gfx::fill_rect(cx - 4, cy - 5, 9, 21, glyph);
-        gfx::fill_rect(cx + 7, cy - 11, 9, 27, glyph);
+    } else if (kind == 3) {             // Monitor (redirected to Task Manager checklist)
+        for (int r = 0; r < 3; ++r) {
+            int ry = cy - 11 + r * 11;
+            gfx::draw_rect(cx - 13, ry, 8, 8, glyph);
+            gfx::draw_line(cx - 12, ry + 1, cx - 7, ry + 6, glyph);
+            gfx::draw_line(cx - 7, ry + 1, cx - 2, ry + 6, glyph);
+            gfx::draw_line(cx + 1, ry + 4, cx + 13, ry + 4, glyph);
+        }
     } else if (kind == 4) {             // Checklist (Task Manager)
         for (int r = 0; r < 3; ++r) {
             int ry = cy - 11 + r * 11;
