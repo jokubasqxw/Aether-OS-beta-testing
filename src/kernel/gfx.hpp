@@ -73,17 +73,6 @@ void draw_string(const char* str, int x, int y, uint32_t fg, uint32_t bg = 0, bo
 void draw_char_scaled(char c, int x, int y, uint32_t fg, int scale);
 void draw_string_scaled(const char* str, int x, int y, uint32_t fg, int scale);
 
-// Image loading and drawing
-struct Image {
-    uint32_t width;
-    uint32_t height;
-    uint32_t* pixels;  // ARGB32 format
-};
-
-bool load_image(const char* path, Image* img);
-void draw_image(const Image& img, int x, int y);
-void draw_image_scaled(const Image& img, int x, int y, uint32_t w, uint32_t h);
-
 } // namespace gfx
 
 #endif // KERNEL_GFX_HPP

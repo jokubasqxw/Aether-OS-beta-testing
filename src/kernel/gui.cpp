@@ -569,20 +569,6 @@ static void draw_app_icon(int cx, int cy, int r, int kind, bool hovered) {
     }
 }
 
-// Draw a custom image icon (kind 7)
-static void draw_image_icon(int cx, int cy, int r, const Image& img, bool hovered) {
-    // Calculate scale to fit the icon circle
-    int size = static_cast<int>(r * 0.85);
-    int pos_x = cx - size / 2;
-    int pos_y = cy - size / 2;
-    gfx::draw_image_scaled(img, pos_x, pos_y, size, size);
-
-    // Draw a subtle highlight ring
-    if (hovered) {
-        gfx::draw_circle(cx, cy, r - 4, gfx::Colors::Teal);
-    }
-}
-
 // ============================================================================
 // Interactive Terminal Buffer & Data Structures for Window 2
 // ============================================================================
@@ -1447,7 +1433,7 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
         // Clip: only draw if y + 16 (text height) is within window
         if (win.y + 74 < win.y + win.h) {
             gfx::draw_string(buf, win.x + 20, win.y + 74, gfx::Colors::LightGrey);
-            gfx::draw_string("Version: v1.0.0",
+            gfx::draw_string("Version: v1.0.1",
                              win.x + 20 + kstd::strlen(buf) * 8 + 8,
                              win.y + 74, 0xFFB8C8D4);
         }
