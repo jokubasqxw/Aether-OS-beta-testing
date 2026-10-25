@@ -3291,6 +3291,14 @@ bool load_url(Document* doc, const char* url, int viewport_width) {
                                         break;
                                     }
                                 }
+                                if (!body) {
+                                    for (int i = 0; i < n - 1; ++i) {
+                                        if (buf[i] == '\\n' && buf[i+1] == '\\n') {
+                                            body = buf + i + 2;
+                                            break;
+                                        }
+                                    }
+                                }
                                 if (body) {
                                     size_t body_len = n - (body - buf);
                                     gfx::Image img = {};
