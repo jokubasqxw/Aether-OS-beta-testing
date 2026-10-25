@@ -27,8 +27,12 @@ QEMU_CMD=(qemu-system-x86_64
     -vga "$VGA"
     -netdev user,id=net0
     -device e1000,netdev=net0
-    -display "$DISPLAY"
 )
+
+# Add display type if not stdio (default is stdio via -serial stdio)
+if [ "$DISPLAY" != "stdio" ]; then
+    QEMU_CMD+=(-display "$DISPLAY")
+fi
 
 # Add fullscreen if requested
 if [ "$FULLSCREEN" = "true" ]; then
