@@ -3106,7 +3106,97 @@ bool load_url(Document* doc, const char* url, int viewport_width) {
                 }
                 kfree(https_buf);
             }
-            if (got) return true;
+            if (got) {
+                // Pre-fetch images for all boxes with img_src
+                for (size_t bi = 0; bi < doc->box_count; ++bi) {
+                    LayoutBox& b = doc->boxes[bi];
+                    if (b.img_src[0] == '\\0' || b.img_pixels) continue;
+                    
+                    char full_url[256];
+                    if (b.img_src[0] == '/') {
+                        const char* u = doc->current_url;
+                        bool is_https = (!kstd::strncmp(u, "https://", 8));
+                        const char* after_proto = is_https ? (u + 8) : (u + 7);
+                        const char* slash = kstd::strchr(after_proto, '/');
+                        size_t host_len = slash ? static_cast<size_t>(slash - after_proto) : kstd::strlen(after_proto);
+                        if (host_len > 200) host_len = 200;
+                        if (is_https) kstd::strcpy(full_url, "https://");
+                        else kstd::strcpy(full_url, "http://");
+                        size_t fl = kstd::strlen(full_url);
+                        for (size_t i = 0; i < host_len && fl + i < sizeof(full_url) - 1; ++i) full_url[fl + i] = after_proto[i];
+                        full_url[fl + host_len] = '\\0';
+                        size_t fl2 = kstd::strlen(full_url);
+                        size_t sl = kstd::strlen(b.img_src);
+                        if (fl2 + sl < sizeof(full_url)) {
+                            for (size_t i = 0; i < sl; ++i) full_url[fl2 + i] = b.img_src[i];
+                            full_url[fl2 + sl] = '\\0';
+                        }
+                    } else {
+                        kstd::strcpy(full_url, b.img_src);
+                    }
+                    
+                    const char* u = full_url;
+                    bool is_https2 = false;
+                    if (!kstd::strncmp(u, "http://", 7)) u += 7;
+                    else if (!kstd::strncmp(u, "https://", 8)) { u += 8; is_https2 = true; }
+                    
+                    const char* slash = kstd::strchr(u, '/');
+                    size_t authority_len = slash ? static_cast<size_t>(slash - u) : kstd::strlen(u);
+                    char host[128];
+                    size_t hl = authority_len;
+                    if (hl >= 128) hl = 127;
+                    kstd::strncpy(host, u, hl);
+                    host[hl] = '\\0';
+                    
+                    uint16_t port = is_https2 ? 443 : 80;
+                    char path[256];
+                    if (slash) { kstd::strncpy(path, slash, sizeof(path) - 1); path[sizeof(path)-1] = '\\0'; }
+                    else { path[0] = '/'; path[1] = '\\0'; }
+                    
+                    uint8_t target_ip[4];
+                    bool resolved = net::parse_ip(host, target_ip);
+                    if (!resolved && net::is_available()) resolved = net::dns_resolve(host, target_ip, 3000);
+                    
+                    if (resolved) {
+                        constexpr size_t cap = 65536;
+                        char* buf = static_cast<char*>(kmalloc(cap));
+                        if (buf) {
+                            int n = 0;
+                            if (is_https2) n = tls::https_get(target_ip, port, host, path, buf, cap - 1, 10000);
+                            else n = net::http_get(target_ip, port, path, buf, cap - 1, 4000, host);
+                            
+                            if (n > 0) {
+                                char* body = nullptr;
+                                for (int i = 0; i < n - 3; ++i) {
+                                    if (buf[i] == '\\r' && buf[i+1] == '\\n' && buf[i+2] == '\\r' && buf[i+3] == '\\n') {
+                                        body = buf + i + 4;
+                                        break;
+                                    }
+                                }
+                                if (!body) {
+                                    for (int i = 0; i < n - 1; ++i) {
+                                        if (buf[i] == '\\n' && buf[i+1] == '\\n') {
+                                            body = buf + i + 2;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (body) {
+                                    size_t body_len = n - (body - buf);
+                                    gfx::Image img = {};
+                                    if (gfx::load_image_from_memory(reinterpret_cast<const uint8_t*>(body), body_len, &img)) {
+                                        b.img_pixels = img.pixels;
+                                        b.img_w = img.width;
+                                        b.img_h = img.height;
+                                    }
+                                }
+                            }
+                            kfree(buf);
+                        }
+                    }
+                }
+                return true;
+            }
 
             render_tls_note(doc, host);
             return false;
