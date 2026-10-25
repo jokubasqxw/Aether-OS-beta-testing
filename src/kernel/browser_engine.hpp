@@ -128,6 +128,7 @@ struct Document {
     bool is_loading;
     uint32_t load_time_ms;
     size_t source_bytes;
+    bool dirty;  // needs redraw
 
     void clear();
 };
@@ -140,7 +141,7 @@ bool parse_html(Document* doc, const char* html, size_t len = 0);
 void layout(Document* doc, int viewport_width);
 
 // High-Performance Viewport Rendering with Strict Viewport Clipping
-void render(const Document& doc, int vx, int vy, int vw, int vh, int scroll_y);
+void render(Document& doc, int vx, int vy, int vw, int vh, int scroll_y);
 
 // Interactive Hit Testing (returns hovered/clicked link or button box)
 const LayoutBox* hit_test(const Document& doc, int x, int y, int scroll_y);

@@ -34,6 +34,7 @@ void Document::clear() {
     is_loading = false;
     load_time_ms = 0;
     source_bytes = 0;
+    dirty = true;
 }
 
 Document* create_document() {
@@ -1952,7 +1953,9 @@ void layout(Document* doc, int viewport_width) {
 }
 
 // Strict Viewport Clipping Renderer (60Hz..240Hz Performance Optimized)
-void render(const Document& doc, int vx, int vy, int vw, int vh, int scroll_y) {
+void render(Document& doc, int vx, int vy, int vw, int vh, int scroll_y) {
+    if (!doc.dirty && doc.scroll_y == scroll_y) return;
+    doc.dirty = false;
     // 1. Fill document background
     if (doc.has_bg_gradient) {
         gfx::draw_gradient_v(vx, vy, vw, vh, doc.bg_color, doc.bg_color2);

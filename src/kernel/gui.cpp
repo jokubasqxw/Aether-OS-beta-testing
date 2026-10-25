@@ -1174,6 +1174,7 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
         if (pos < 0) pos = 0;
         if (pos > track) pos = track;
         browser_doc->scroll_y = (track > 0) ? (pos * max_scroll) / track : 0;
+        browser_doc->dirty = true;
         win4_dirty = true;
     };
 
