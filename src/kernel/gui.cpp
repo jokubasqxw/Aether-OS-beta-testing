@@ -1445,8 +1445,8 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
         kstd::strcpy(buf + kstd::strlen(buf), cfg.path);
         gfx::draw_string(buf, win.x + 20, win.y + 98, 0xFF9FB8CC);
 
-        int win_bottom = win.y + win.h;
         // Clip text to window bounds - skip drawing if outside window
+        int win_bottom = win.y + win.h;
         if (win.y + 126 < win.y + win.h) {
             gfx::draw_string("Installing replaces the boot kernel and keeps a rollback snapshot.",
                              win.x + 20, win.y + 126, 0xFF7F97A8);
