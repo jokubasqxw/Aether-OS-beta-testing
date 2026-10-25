@@ -863,10 +863,10 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
     struct HubBuiltin { const char* name; int icon; int win_id; };
     const HubBuiltin hub_builtins[] = {
         { "Terminal", 0, 2 }, { "Browser", 1, 4 }, { "3D", 2, 3 },
-        { "Monitor", 3, 1 }, { "Tasks", 4, 5 }, { "Settings", 5, 6 },
+        { "Tasks", 5 }, { "Settings", 5, 6 },
         { "App Hub", 6, 7 },
     };
-    constexpr int HUB_BUILTINS = 7;
+    constexpr int HUB_BUILTINS = 6;
     if (apphub::count() > 0) {
         char num[8];
         kstd::strcpy(hub_status, "Catalog ready - ");
@@ -2972,12 +2972,11 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
     // application windows; clicking a tile focuses / launches its window.
     // ---------------------------------------------------------------------
     struct DesktopIcon { const char* label; int kind; };
-    const DesktopIcon desktop_icons[7] = {
+    const DesktopIcon desktop_icons[6] = {
         { "Terminal", 0 }, { "Browser", 1 }, { "3D Engine", 2 },
-        { "Monitor", 3 }, { "Tasks", 4 }, { "Settings", 5 },
-        { "App Hub", 6 }
+        { "Tasks", 4 }, { "Settings", 5 }, { "App Hub", 6 }
     };
-    constexpr int NICON = 7;
+    constexpr int NICON = 6;
     int hovered_icon = -1;
 
     auto icon_center = [&](int idx, int& cx, int& cy, int& r) {
