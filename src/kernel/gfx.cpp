@@ -321,33 +321,23 @@ void draw_gradient_v(int x, int y, int w, int h, uint32_t top_color, uint32_t bo
 
 void draw_char(char c, int x, int y, uint32_t fg, uint32_t bg, bool transparent_bg) {
     if (static_cast<unsigned char>(c) >= 128) return;
-    if (x < 0 || x + 8 > static_cast<int>(screen_width) ||
-        y < 0 || y + 16 > static_cast<int>(screen_height)) return;
+    if (y < 0 || y + 16 > static_cast<int>(screen_height)) return;
 
     const uint8_t* glyph = font::FONT_8X16[static_cast<uint8_t>(c)];
     uint32_t* buf = get_render_target();
 
     for (int row = 0; row < 16; ++row) {
-        uint8_t bits = glyph[row];
-        uint32_t* row_ptr = buf + (y + row) * screen_width + x;
-        if (transparent_bg) {
-            if (bits & 0x80) row_ptr[0] = fg;
-            if (bits & 0x40) row_ptr[1] = fg;
-            if (bits & 0x20) row_ptr[2] = fg;
-            if (bits & 0x10) row_ptr[3] = fg;
-            if (bits & 0x08) row_ptr[4] = fg;
-            if (bits & 0x04) row_ptr[5] = fg;
-            if (bits & 0x02) row_ptr[6] = fg;
-            if (bits & 0x01) row_ptr[7] = fg;
-        } else {
-            row_ptr[0] = (bits & 0x80) ? fg : bg;
-            row_ptr[1] = (bits & 0x40) ? fg : bg;
-            row_ptr[2] = (bits & 0x20) ? fg : bg;
-            row_ptr[3] = (bits & 0x10) ? fg : bg;
-            row_ptr[4] = (bits & 0x08) ? fg : bg;
-            row_ptr[5] = (bits & 0x04) ? fg : bg;
-            row_ptr[6] = (bits & 0x02) ? fg : bg;
-            row_ptr[7] = (bits & 0x01) ? fg : bg;
+        if (y + row < 0 || y + row >= static_cast<int>(screen_height)) continue;
+        uint32_t* row_ptr = buf + (y + row) * screen_width;
+        // Clip horizontally: only draw pixels that fit within screen
+        for (int col = 0; col < 8; ++col) {
+            int px = x + col;
+            if (px < 0 || px >= static_cast<int>(screen_width)) continue;
+            if (transparent_bg) {
+                if (glyph[row] & (0x80 >> col)) row_ptr[px] = fg;
+            } else {
+                row_ptr[px] = (glyph[row] & (0x80 >> col)) ? fg : bg;
+            }
         }
     }
 }
