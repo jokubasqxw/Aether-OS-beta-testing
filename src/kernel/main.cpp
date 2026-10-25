@@ -18,6 +18,7 @@
 #include "updater.hpp"
 #include "ramfs.hpp"
 #include "rtc.hpp"
+#include "font_ttf.hpp"
 #include "e1000.hpp"
 #include "net.hpp"
 #include "wifi.hpp"
@@ -239,6 +240,13 @@ extern "C" void kernel_main(uint64_t magic, uint64_t mbi_addr) {
         }
     } else {
         printk("[WARN] IA32_PAT subsystem not available on this CPU.\n");
+    }
+
+    // Initialize TrueType font system
+    if (font::ttf::init()) {
+        printk("[OK] TrueType font system initialized (Vera Sans).\n");
+    } else {
+        printk("[WARN] TrueType font init failed, using bitmap fallback.\n");
     }
 
     pit::sleep(300); // Brief pause to view boot logs

@@ -73,6 +73,11 @@ void draw_string(const char* str, int x, int y, uint32_t fg, uint32_t bg = 0, bo
 void draw_char_scaled(char c, int x, int y, uint32_t fg, int scale);
 void draw_string_scaled(const char* str, int x, int y, uint32_t fg, int scale);
 
+// TrueType font rendering
+void draw_string_ttf(const char* str, int x, int y, uint32_t fg, int font_size);
+int string_width_ttf(const char* str, int font_size);
+int font_height_ttf(int font_size);
+
 // Image loading and drawing
 struct Image {
     uint32_t width;

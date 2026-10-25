@@ -55,6 +55,8 @@ CPP_SRCS = src/kernel/main.cpp \
            src/kernel/vmware_svga.cpp \
            src/kernel/gfx_driver.cpp \
            src/kernel/font.cpp \
+           src/kernel/font_ttf.cpp \
+           src/kernel/font_data.cpp \
            src/kernel/gfx.cpp \
            src/kernel/gui.cpp \
            src/kernel/ac97.cpp \
@@ -124,6 +126,11 @@ $(BUILD_DIR)/kernel/tls.o: src/kernel/tls.cpp
 	@mkdir -p $(dir $@)
 	@echo "[CXX] $<"
 	$(CXX) $(CXXFLAGS) -Isrc/kernel/bearssl/shim -Isrc/kernel/bearssl/inc -c $< -o $@
+
+$(BUILD_DIR)/kernel/font_ttf.o: src/kernel/font_ttf.cpp
+	@mkdir -p $(dir $@)
+	@echo "[CXX] $< (+sse2)"
+	$(CXX) $(CXXFLAGS) -msse2 -c $< -o $@
 
 $(BUILD_DIR)/kernel/js.o: src/kernel/js.cpp
 	@mkdir -p $(dir $@)

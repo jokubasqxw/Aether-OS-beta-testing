@@ -4,6 +4,7 @@
 #include "kstring.hpp"
 #include "aetherfs.hpp"
 #include "fat16.hpp"
+#include "font_ttf.hpp"
 #include "inflate.hpp"
 
 namespace gfx {
@@ -411,6 +412,20 @@ void draw_string_scaled(const char* str, int x, int y, uint32_t fg, int scale) {
         }
         str++;
     }
+}
+
+// TrueType font rendering
+void draw_string_ttf(const char* str, int x, int y, uint32_t fg, int font_size) {
+    if (!str || !active_target) return;
+    font::ttf::render_text(str, active_target, screen_width, screen_height, x, y, fg, font_size);
+}
+
+int string_width_ttf(const char* str, int font_size) {
+    return font::ttf::text_width(str, font_size);
+}
+
+int font_height_ttf(int font_size) {
+    return font::ttf::font_height(font_size);
 }
 
 // Image loading and drawing

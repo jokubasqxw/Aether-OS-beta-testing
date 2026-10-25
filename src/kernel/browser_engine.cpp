@@ -2011,7 +2011,7 @@ void render(const Document& doc, int vx, int vy, int vw, int vh, int scroll_y) {
             gfx::fill_rect(screen_x, screen_y, box.w, box.h, bg);
             gfx::draw_rect(screen_x, screen_y, box.w, box.h, border);
             int ty = screen_y + (box.h - 10) / 2;
-            gfx::draw_string(box.text, screen_x + 6, ty, box.fg_color);
+            gfx::draw_string_ttf(box.text, screen_x + 6, ty, box.fg_color, 14);
             continue;
         }
 
@@ -2030,22 +2030,12 @@ void render(const Document& doc, int vx, int vy, int vw, int vh, int scroll_y) {
             continue;
         }
 
-        // Render Text (faux-bold by a 1px double strike, as the bitmap font
-        // has a single weight). Large type is drawn from scaled glyphs.
+        // Render Text using TrueType font
         uint32_t fg = box.is_hovered ? gfx::Colors::Yellow : box.fg_color;
-        int scale = box.scale > 0 ? box.scale : 1;
-        if (scale > 1) {
-            int off = scale > 2 ? 2 : 1;
-            if (box.is_bold) {
-                gfx::draw_string_scaled(box.text, screen_x + off, screen_y, fg, scale);
-            }
-            gfx::draw_string_scaled(box.text, screen_x, screen_y, fg, scale);
-        } else {
-            if (box.is_bold) {
-                gfx::draw_string(box.text, screen_x + 1, screen_y, fg);
-            }
-            gfx::draw_string(box.text, screen_x, screen_y, fg);
-        }
+        int font_size = 14 + (box.scale > 1 ? (box.scale - 1) * 4 : 0);
+        if (font_size < 12) font_size = 12;
+        if (font_size > 48) font_size = 48;
+        gfx::draw_string_ttf(box.text, screen_x, screen_y, fg, font_size);
 
         // Hyperlink Underline
         if (box.is_underline && box.w > 0) {
