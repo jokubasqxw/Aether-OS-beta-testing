@@ -19,6 +19,14 @@ VGA="${AETHEROS_VGA:-std}"
 FULLSCREEN="${AETHEROS_FULLSCREEN:-false}"
 DISPLAY="${AETHEROS_DISPLAY:-stdio}"
 
+# Check for disk image (needed for updates)
+DISK_IMG="${AETHEROS_DISK:-build/disk.img}"
+if [ ! -f "$DISK_IMG" ]; then
+    echo "No disk image found at $DISK_IMG"
+    echo "Creating disk image (128MB)..."
+    make run-disk 2>&1 || { echo "Note: make run-disk may need sudo for mkfs/grub."; }
+fi
+
 # Build QEMU command
 QEMU_CMD=(qemu-system-x86_64
     -kernel release/aetheros32.bin

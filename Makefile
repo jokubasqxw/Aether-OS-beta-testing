@@ -170,7 +170,13 @@ run-vmware-iso: $(ISO_IMAGE)
 	qemu-system-x86_64 -cdrom $(ISO_IMAGE) -serial stdio -m $(QEMU_MEM) -vga vmware -netdev user,id=net0 -device e1000,netdev=net0 $(QEMU_AUDIO)
 
 run-curses: $(KERNEL_ELF32)
-	qemu-system-x86_64 -kernel $(KERNEL_ELF32) -serial stdio -display curses -m $(QEMU_MEM) -netdev user,id=net0 -device e1000,netdev=net0 $(QEMU_AUDIO)
+		qemu-system-x86_64 -kernel $(KERNEL_ELF32) -serial stdio -display curses -m $(QEMU_MEM) -netdev user,id=net0 -device e1000,netdev=net0 $(QEMU_AUDIO)
+
+run-disk: $(KERNEL_ELF32) build/disk.img
+		qemu-system-x86_64 -kernel $(KERNEL_ELF32) -drive file=build/disk.img,format=raw,if=ide -serial stdio -m $(QEMU_MEM) -vga std -global VGA.vgamem_mb=32 -netdev user,id=net0 -device e1000,netdev=net0 $(QEMU_AUDIO)
+
+build/disk.img: tools/mkdisk.sh
+		bash tools/mkdisk.sh
 
 run-nographic: $(KERNEL_ELF32)
 	qemu-system-x86_64 -kernel $(KERNEL_ELF32) -nographic -m $(QEMU_MEM) -netdev user,id=net0 -device e1000,netdev=net0 $(QEMU_AUDIO)
