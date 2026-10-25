@@ -91,7 +91,7 @@ struct LayoutBox {
     int h;
     BoxType type;
     char text[128];
-    char link_url[128];
+    char link_url[256];
     char img_src[128];
     uint32_t* img_pixels;
     uint32_t img_w;

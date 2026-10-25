@@ -1050,7 +1050,7 @@ bool parse_html(Document* doc, const char* html, size_t len) {
     const char* end = html + doc->source_bytes;
 
     TagType current_tag = TagType::UNKNOWN;
-    char current_link[128] = {0};
+    char current_link[256] = {0};
     bool in_pre = false;
     bool in_title = false;
     bool in_list = false;
