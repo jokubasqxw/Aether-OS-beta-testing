@@ -593,7 +593,7 @@ struct GuiTerminal {
         input_len = 0;
         cursor_pos = 0;
 
-        add_line("AetherOS Interactive Desktop Terminal [v1.0]", gfx::Colors::Teal);
+        add_line("AetherOS Interactive Desktop Terminal [v1.0.1]", gfx::Colors::Teal);
         add_line("Type 'help' for commands, 'fetch' for system overview.", gfx::Colors::LightGrey);
         add_line("", gfx::Colors::White);
     }
@@ -2549,7 +2549,7 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
             execute_terminal_command();
         } else if (c == 12) { // Ctrl+L: clear screen
             term.clear();
-            term.add_line("AetherOS Interactive Desktop Terminal [v1.0]", gfx::Colors::Teal);
+            term.add_line("AetherOS Interactive Desktop Terminal [v1.0.1]", gfx::Colors::Teal);
             term.add_line("Type 'help' for commands, 'fetch' for system overview.", gfx::Colors::LightGrey);
             term.add_line("", gfx::Colors::White);
         } else if (c == 3) { // Ctrl+C: clear input

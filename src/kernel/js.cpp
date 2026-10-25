@@ -2200,6 +2200,27 @@ bool execute(const char* source, Host* host) {
     it.declare(it.global, mkstr("window"))->val = vobj(mkobj(false));
     it.declare(it.global, mkstr("alert"))->val = get_prop(it, vobj(console), mkstr("log"));
     it.declare(it.global, mkstr("setTimeout"))->val = vfunc(mknative([](Value, Value* a, int ac) -> Value { if (ac > 0 && a[0].t == VT::Func) return call_func(*g_it, a[0].f, vundef(), nullptr, 0); return vundef(); }));
+    // fetch(url) - synchronously fetches a URL and returns the response body as a string
+    it.declare(it.global, mkstr("fetch"))->val = vfunc(mknative([](Value, Value* a, int ac) -> Value {
+        if (ac < 1) return vundef();
+        Str* url_str = to_str(*g_it, a[0]);
+        if (!url_str || !url_str->data) return vundef();
+        char url_buf[512];
+        size_t url_len = static_cast<size_t>(url_str->len);
+        if (url_len >= sizeof(url_buf)) url_len = sizeof(url_buf) - 1;
+        for (size_t i = 0; i < url_len; ++i) url_buf[i] = url_str->data[i];
+        url_buf[url_len] = '\\0';
+        
+        if (g_it && g_it->host && g_it->host->fetch) {
+            char* response = g_it->host->fetch(g_it->host->user, url_buf);
+            if (response) {
+                Value result = vstr(mkstr(response, kstd::strlen(response)));
+                kfree(response);
+                return result;
+            }
+        }
+        return vundef();
+    }));
     it.declare(it.global, mkstr("NaN"))->val = vnum(0.0 / 0.0);
     it.declare(it.global, mkstr("Infinity"))->val = vnum(1.0 / 0.0);
 

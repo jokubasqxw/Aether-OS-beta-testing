@@ -48,7 +48,7 @@ void load_config() {
 
 const Config& config() { return g_cfg; }
 
-static const char* KERNEL_VERSION = "1.0.0";
+static const char* KERNEL_VERSION = "1.0.1";
 
 void set_config(const char* host, uint16_t port, const char* path) {
     if (host && *host) {
@@ -175,7 +175,7 @@ Result fetch_verify(char* message, size_t message_len) {
     if (same_as_installed(body, len)) {
         // Report version info when kernels match
         if (message && message_len) {
-            kstd::strcpy(message, "you are on the latest build (v1.0.0)");
+            kstd::strcpy(message, "you are on the latest build (v1.0.1)");
             message[message_len - 1] = '\0';
         }
         delete[] buf;

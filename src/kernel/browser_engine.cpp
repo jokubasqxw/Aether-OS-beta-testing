@@ -2168,7 +2168,94 @@ bool ci_prefix(const char* a, const char* b) {
 
 // Returns a heap buffer holding the HTML with scripts executed, or nullptr if
 // the input has no scripts (caller should parse the original in that case).
-static char* expand_scripts(const char* html, size_t len, size_t* out_len) {
+static char* fetch_url_content(const char* url) {
+    if (!url || !*url) return nullptr;
+    
+    const char* u = url;
+    bool is_https = false;
+    if (!kstd::strncmp(u, "http://", 7)) {
+        u += 7;
+    } else if (!kstd::strncmp(u, "https://", 8)) {
+        u += 8;
+        is_https = true;
+    }
+    
+    const char* slash = kstd::strchr(u, '/');
+    size_t authority_len = slash ? static_cast<size_t>(slash - u) : kstd::strlen(u);
+    const char* colon = nullptr;
+    for (size_t i = 0; i < authority_len; ++i) {
+        if (u[i] == ':') { colon = u + i; break; }
+    }
+    size_t host_len = colon ? static_cast<size_t>(colon - u) : authority_len;
+    if (host_len >= 128) host_len = 127;
+    
+    char host[128];
+    kstd::strncpy(host, u, host_len);
+    host[host_len] = '\0';
+    
+    uint16_t port = is_https ? 443 : 80;
+    if (colon) {
+        uint32_t parsed = 0;
+        const char* d = colon + 1;
+        const char* aend = u + authority_len;
+        while (d < aend && *d >= '0' && *d <= '9') {
+            parsed = parsed * 10 + static_cast<uint32_t>(*d - '0');
+            ++d;
+        }
+        if (parsed > 0 && parsed < 65536) port = static_cast<uint16_t>(parsed);
+    }
+    
+    char path[256];
+    if (slash) {
+        kstd::strncpy(path, slash, sizeof(path) - 1);
+        path[sizeof(path) - 1] = '\0';
+    } else {
+        path[0] = '/';
+        path[1] = '\0';
+    }
+    
+    uint8_t target_ip[4];
+    bool resolved = net::parse_ip(host, target_ip);
+    if (!resolved && net::is_available()) {
+        resolved = net::dns_resolve(host, target_ip, 3000);
+    }
+    if (!resolved) return nullptr;
+    
+    constexpr size_t cap = 65536;
+    char* buf = static_cast<char*>(kmalloc(cap));
+    if (!buf) return nullptr;
+    
+    int n = 0;
+    if (is_https) {
+        n = tls::https_get(target_ip, port, host, path, buf, cap - 1, 10000);
+    } else {
+        n = net::http_get(target_ip, port, path, buf, cap - 1, 4000, host);
+    }
+    
+    if (n <= 0) {
+        kfree(buf);
+        return nullptr;
+    }
+    
+    // Find the body (after \r\n\r\n)
+    char* hdr_end = kstd::strstr(buf, "\r\n\r\n");
+    if (hdr_end) {
+        char* body = hdr_end + 4;
+        size_t body_len = n - static_cast<int>(body - buf);
+        // Move body to start of buffer
+        for (size_t i = 0; i < body_len; ++i) {
+            buf[i] = body[i];
+        }
+        buf[body_len] = '\0';
+    } else {
+        buf[n] = '\0';
+    }
+    
+    return buf;
+}
+
+
+static char* expand_scripts(const char* html, size_t len, size_t* out_len, const char* base_url = nullptr) {
     bool has_script = false;
     for (size_t i = 0; i + 7 <= len; ++i) {
         if (html[i] == '<' && ci_prefix(html + i + 1, "script")) { has_script = true; break; }
@@ -2195,13 +2282,27 @@ static char* expand_scripts(const char* html, size_t len, size_t* out_len) {
 
             // Detect a src= attribute on the opening tag (skip such scripts)
             bool has_src = false;
+            char src_url[256] = {0};
             for (size_t k = i + 7; k + 3 < j; ++k) {
                 if ((html[k] == 's' || html[k] == 'S') &&
                     (html[k + 1] == 'r' || html[k + 1] == 'R') &&
                     (html[k + 2] == 'c' || html[k + 2] == 'C')) {
                     size_t m = k + 3;
                     while (m < j && (html[m] == ' ' || html[m] == '\t')) ++m;
-                    if (m < j && html[m] == '=') { has_src = true; break; }
+                    if (m < j && html[m] == '=') {
+                        has_src = true;
+                        // Extract the URL value
+                        m++; // skip '='
+                        while (m < j && (html[m] == ' ' || html[m] == '\t' || html[m] == '"' || html[m] == '\'')) ++m;
+                        size_t url_start = m;
+                        while (m < j && html[m] != ' ' && html[m] != '\t' && html[m] != '"' && html[m] != '\'') ++m;
+                        size_t url_len = m - url_start;
+                        if (url_len > 0 && url_len < sizeof(src_url) - 1) {
+                            for (size_t u = 0; u < url_len; ++u) src_url[u] = html[url_start + u];
+                            src_url[url_len] = '\0';
+                        }
+                        break;
+                    }
                 }
             }
 
@@ -2214,7 +2315,87 @@ static char* expand_scripts(const char* html, size_t len, size_t* out_len) {
                 }
             }
 
-            if (!has_src && close > content_start) {
+            if (has_src && src_url[0] && base_url) {
+                // Fetch and execute external script
+                char resolved_url[512];
+                resolve_url(base_url, src_url, resolved_url, sizeof(resolved_url));
+                
+                // Parse URL
+                const char* u = resolved_url;
+                bool is_https = false;
+                if (!kstd::strncmp(u, "http://", 7)) {
+                    u += 7;
+                } else if (!kstd::strncmp(u, "https://", 8)) {
+                    u += 8;
+                    is_https = true;
+                }
+                
+                const char* slash = kstd::strchr(u, '/');
+                size_t authority_len = slash ? static_cast<size_t>(slash - u) : kstd::strlen(u);
+                const char* colon = nullptr;
+                for (size_t i = 0; i < authority_len; ++i) {
+                    if (u[i] == ':') { colon = u + i; break; }
+                }
+                size_t host_len = colon ? static_cast<size_t>(colon - u) : authority_len;
+                if (host_len >= 128) host_len = 127;
+                
+                char host[128];
+                kstd::strncpy(host, u, host_len);
+                host[host_len] = '\0';
+                
+                uint16_t port = is_https ? 443 : 80;
+                if (colon) {
+                    uint32_t parsed = 0;
+                    const char* d = colon + 1;
+                    const char* aend = u + authority_len;
+                    while (d < aend && *d >= '0' && *d <= '9') {
+                        parsed = parsed * 10 + static_cast<uint32_t>(*d - '0');
+                        ++d;
+                    }
+                    if (parsed > 0 && parsed < 65536) port = static_cast<uint16_t>(parsed);
+                }
+                
+                char path[256];
+                if (slash) {
+                    kstd::strncpy(path, slash, sizeof(path) - 1);
+                    path[sizeof(path) - 1] = '\0';
+                } else {
+                    path[0] = '/';
+                    path[1] = '\0';
+                }
+                
+                // Resolve hostname
+                uint8_t target_ip[4];
+                bool resolved = net::parse_ip(host, target_ip);
+                if (!resolved && net::is_available()) {
+                    resolved = net::dns_resolve(host, target_ip, 3000);
+                }
+                
+                if (resolved) {
+                    constexpr size_t script_cap = 65536;
+                    char* script_buf = static_cast<char*>(kmalloc(script_cap));
+                    if (script_buf) {
+                        int n = 0;
+                        if (is_https) {
+                            n = tls::https_get(target_ip, port, host, path, script_buf, script_cap - 1, 10000);
+                        } else {
+                            n = net::http_get(target_ip, port, path, script_buf, script_cap - 1, 4000, host);
+                        }
+                        if (n > 0) {
+                            script_buf[n] = '\0';
+                            ScriptSink sink{out + o, 0, cap > o + 1 ? cap - o - 1 : 0};
+                            js::Host host_ctx;
+                            host_ctx.user = &sink;
+                            host_ctx.log = nullptr;
+                            host_ctx.write = script_sink_write;
+                            host_ctx.fetch = [](void*, const char* url) -> char* { return fetch_url_content(url); };
+                            js::execute(script_buf, &host_ctx);
+                            o += sink.len;
+                        }
+                        kfree(script_buf);
+                    }
+                }
+            } else if (!has_src && close > content_start) {
                 size_t slen = close - content_start;
                 char* src = static_cast<char*>(kmalloc(slen + 1));
                 if (src) {
@@ -2225,6 +2406,7 @@ static char* expand_scripts(const char* html, size_t len, size_t* out_len) {
                     host.user = &sink;
                     host.log = nullptr;
                     host.write = script_sink_write;
+                    host.fetch = [](void*, const char* url) -> char* { return fetch_url_content(url); };
                     js::execute(src, &host);
                     kfree(src);
                     o += sink.len;
@@ -2252,7 +2434,7 @@ static char* expand_scripts(const char* html, size_t len, size_t* out_len) {
 // Execute inline scripts, then lay out the (possibly rewritten) document.
 static void parse_html_with_scripts(Document* doc, const char* html, size_t len) {
     size_t expanded_len = 0;
-    char* expanded = expand_scripts(html, len, &expanded_len);
+    char* expanded = expand_scripts(html, len, &expanded_len, doc ? doc->current_url : nullptr);
     if (expanded) {
         parse_html(doc, expanded, expanded_len);
         kfree(expanded);

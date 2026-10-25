@@ -113,7 +113,7 @@ void print_banner() {
     printk("   \\_| |_/\\___|\\__|_| |_|\\___|_| \\____|   |_|  \n\n");
 
     vga::set_color(vga::Color::LightGreen, vga::Color::Black);
-    printk("   AetherOS 64-bit Modern Operating System [v1.0]\n");
+    printk("   AetherOS 64-bit Modern Operating System [v1.0.1]\n");
     vga::set_color(vga::Color::DarkGrey, vga::Color::Black);
     printk("   Freestanding C++20 | AMD64 Long Mode | SMP Ready\n");
     printk("--------------------------------------------------------------------------------\n");

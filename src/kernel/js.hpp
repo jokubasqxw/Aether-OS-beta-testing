@@ -20,6 +20,9 @@ struct Host {
     void* user = nullptr;
     void (*log)(void* user, const char* message) = nullptr;        // console.log / alert
     void (*write)(void* user, const char* html) = nullptr;         // document.write
+    // Fetch a URL and return the response body (synchronously).
+    // Returns a heap-allocated string (caller frees) or nullptr on failure.
+    char* (*fetch)(void* user, const char* url) = nullptr;         // fetch(url)
 };
 
 struct Result {
