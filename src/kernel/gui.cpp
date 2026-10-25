@@ -1408,7 +1408,8 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
         restart_x = install_x + bw + 16;
     };
 
-        auto draw_win6_content = [&](const WindowState& win) {
+    // Returns true if a Settings control consumed the click.
+    auto draw_win6_content = [&](const WindowState& win) {
         int cx = win.x + 2;
         int cy = win.y + 28;
         int cw = win.w - 4;
@@ -1429,12 +1430,13 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
         } else {
             kstd::strcpy(buf + kstd::strlen(buf), " (not found)");
         }
-        gfx::draw_string(buf, win.x + 20, win.y + 74, gfx::Colors::LightGrey);
-
-        // Version string displayed next to the kernel image info.
-        gfx::draw_string("Version: v1.0.0",
-                         win.x + 20 + kstd::strlen(buf) * 8 + 8,
-                         win.y + 74, 0xFFB8C8D4);
+        // Clip: only draw if y + 16 (text height) is within window
+        if (win.y + 74 < win.y + win.h) {
+            gfx::draw_string(buf, win.x + 20, win.y + 74, gfx::Colors::LightGrey);
+            gfx::draw_string("Version: v1.0.0",
+                             win.x + 20 + kstd::strlen(buf) * 8 + 8,
+                             win.y + 74, 0xFFB8C8D4);
+        }
 
         const updater::Config& cfg = updater::config();
         buf[0] = '\0';
@@ -1443,10 +1445,11 @@ void run_desktop(uint32_t width, uint32_t height, uint32_t target_fps) {
         kstd::strcpy(buf + kstd::strlen(buf), ":");
         kstd::itoa(static_cast<uint64_t>(cfg.port), buf + kstd::strlen(buf), 10);
         kstd::strcpy(buf + kstd::strlen(buf), cfg.path);
-        gfx::draw_string(buf, win.x + 20, win.y + 98, 0xFF9FB8CC);
+        if (win.y + 98 < win.y + win.h) {
+            gfx::draw_string(buf, win.x + 20, win.y + 98, 0xFF9FB8CC);
+        }
 
-        // Clip text to window bounds - skip drawing if outside window
-        int win_bottom = win.y + win.h;
+        // Install note - only if there's room below the other text
         if (win.y + 126 < win.y + win.h) {
             gfx::draw_string("Installing replaces the boot kernel and keeps a rollback snapshot.",
                              win.x + 20, win.y + 126, 0xFF7F97A8);
