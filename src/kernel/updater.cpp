@@ -12,7 +12,7 @@ static const char* BACKUP_NAME = "kernel.bak";
 static const char* CONFIG_NAME = "update.conf";
 static constexpr size_t DOWNLOAD_CAP = 8u * 1024u * 1024u;
 
-static Config g_cfg = { "10.0.2.2", 8000, "/aetheros.bin" };
+static Config g_cfg = { "raw.githubusercontent.com", 80, "/jokubasqxw/Aether-OS-beta-testing/main/release/aetheros.bin" };
 
 void load_config() {
     if (!aetherfs::mounted() || !aetherfs::exists(CONFIG_NAME)) return;
