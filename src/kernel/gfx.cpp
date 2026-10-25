@@ -476,6 +476,8 @@ bool load_png_file(const uint8_t* data, size_t size, uint32_t** out_pixels, uint
     size_t pos = 8;  // Skip signature
     uint32_t width = 0, height = 0;
     uint8_t bit_depth = 0, color_type = 0;
+    uint8_t palette[768] = {0};
+    size_t palette_size = 0;
     uint8_t* idat_data = nullptr;
     size_t idat_size = 0;
     size_t idat_cap = 0;
@@ -487,7 +489,16 @@ bool load_png_file(const uint8_t* data, size_t size, uint32_t** out_pixels, uint
         char chunk_type[5] = {static_cast<char>(data[pos]), static_cast<char>(data[pos+1]), static_cast<char>(data[pos+2]), static_cast<char>(data[pos+3]), '\0'};
         pos += 4;
         
-        if (kstd::strcmp(chunk_type, "IHDR") == 0 && chunk_len >= 13) {
+        if (kstd::strcmp(chunk_type, "PLTE") == 0) {
+            // Store palette
+            palette_size = chunk_len / 3;
+            if (palette_size > 256) palette_size = 256;
+            for (size_t i = 0; i < palette_size; ++i) {
+                palette[i*3+0] = data[pos + i*3 + 0];
+                palette[i*3+1] = data[pos + i*3 + 1];
+                palette[i*3+2] = data[pos + i*3 + 2];
+            }
+        } else if (kstd::strcmp(chunk_type, "IHDR") == 0 && chunk_len >= 13) {
             width = (data[pos] << 24) | (data[pos+1] << 16) | (data[pos+2] << 8) | data[pos+3];
             height = (data[pos+4] << 24) | (data[pos+5] << 16) | (data[pos+6] << 8) | data[pos+7];
             bit_depth = data[pos+8];
@@ -523,13 +534,13 @@ bool load_png_file(const uint8_t* data, size_t size, uint32_t** out_pixels, uint
         if (idat_data) delete[] idat_data;
         return false;
     }
-    if (color_type != 2 && color_type != 6) {
+    if (color_type != 2 && color_type != 3 && color_type != 6) {
         if (idat_data) delete[] idat_data;
         return false;
     }
     
-    int channels = (color_type == 2) ? 3 : 4;
-    size_t bytes_per_pixel = channels;
+    int channels = (color_type == 2) ? 3 : (color_type == 6) ? 4 : 1;
+    size_t bytes_per_pixel = (color_type == 3) ? 1 : channels;
     size_t stride = width * bytes_per_pixel;
     
     // Decompress IDAT data
@@ -592,11 +603,24 @@ bool load_png_file(const uint8_t* data, size_t size, uint32_t** out_pixels, uint
         }
         
         for (uint32_t x = 0; x < width; ++x) {
-            size_t idx = x * bytes_per_pixel;
-            uint8_t r = filtered[idx];
-            uint8_t g = filtered[idx + 1];
-            uint8_t b = filtered[idx + 2];
-            uint8_t a = (channels == 4) ? filtered[idx + 3] : 255;
+            uint8_t r, g, b, a = 255;
+            if (color_type == 3) {
+                // Indexed color
+                uint8_t idx = filtered[x];
+                if (idx < palette_size) {
+                    r = palette[idx*3+0];
+                    g = palette[idx*3+1];
+                    b = palette[idx*3+2];
+                } else {
+                    r = g = b = 0;
+                }
+            } else {
+                size_t idx = x * bytes_per_pixel;
+                r = filtered[idx];
+                g = filtered[idx + 1];
+                b = filtered[idx + 2];
+                a = (channels == 4) ? filtered[idx + 3] : 255;
+            }
             pixels[y * width + x] = (a << 24) | (r << 16) | (g << 8) | b;
         }
         
