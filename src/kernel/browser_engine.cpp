@@ -1163,6 +1163,7 @@ bool parse_html(Document* doc, const char* html, size_t len) {
             char value_val[128] = {0};
             char ph_val[128] = {0};
             char alt_val[128] = {0};
+char src_val[128] = {0};
             char align_val[16] = {0};
             char bgcolor_val[24] = {0};
             char color_val[24] = {0};
@@ -1215,6 +1216,8 @@ bool parse_html(Document* doc, const char* html, size_t len) {
                             copy_attr(ph_val, sizeof(ph_val));
                         } else if (is_attr("alt")) {
                             copy_attr(alt_val, sizeof(alt_val));
+                        } else if (is_attr("src")) {
+                            copy_attr(src_val, sizeof(src_val));
                         } else if (is_attr("align")) {
                             copy_attr(align_val, sizeof(align_val));
                         } else if (is_attr("bgcolor")) {
@@ -1650,6 +1653,7 @@ bool parse_html(Document* doc, const char* html, size_t len) {
                         ib->has_border = true;
                         ib->border_color = 0xFF2C4A63;
                         ib->fg_color = 0xFF94A3B8;
+                        kstd::strcpy(ib->img_src, src_val);
                         if (alt_val[0]) {
                             decode_entities(alt_val, ib->text, sizeof(ib->text));
                         } else {
@@ -1962,7 +1966,91 @@ void render(const Document& doc, int vx, int vy, int vw, int vh, int scroll_y) {
             continue;
         }
 
-        // Interactive controls: buttons and input fields.
+        // Render image if box has an img_src
+        if (box.img_src[0] != '\\0') {
+            // Build full URL (resolve relative URLs against document URL)
+            char full_url[256];
+            if (box.img_src[0] == '/') {
+                const char* u = doc.current_url;
+                bool is_https = (!kstd::strncmp(u, "https://", 8));
+                const char* after_proto = is_https ? (u + 8) : (u + 7);
+                const char* slash = kstd::strchr(after_proto, '/');
+                size_t host_len = slash ? static_cast<size_t>(slash - after_proto) : kstd::strlen(after_proto);
+                if (host_len > 200) host_len = 200;
+                if (is_https) kstd::strcpy(full_url, "https://");
+                else kstd::strcpy(full_url, "http://");
+                kstd::strncpy(full_url + kstd::strlen(full_url), after_proto, host_len);
+                full_url[kstd::strlen(full_url) + host_len] = '\\0';
+                // append img_src
+                size_t fl = kstd::strlen(full_url);
+                size_t sl = kstd::strlen(box.img_src);
+                if (fl + sl < sizeof(full_url)) {
+                    for (size_t i = 0; i < sl; ++i) full_url[fl + i] = box.img_src[i];
+                    full_url[fl + sl] = '\\0';
+                }
+            } else {
+                kstd::strcpy(full_url, box.img_src);
+            }
+            
+            // Parse URL
+            const char* u = full_url;
+            bool is_https = false;
+            if (!kstd::strncmp(u, "http://", 7)) u += 7;
+            else if (!kstd::strncmp(u, "https://", 8)) { u += 8; is_https = true; }
+            
+            const char* slash = kstd::strchr(u, '/');
+            size_t authority_len = slash ? static_cast<size_t>(slash - u) : kstd::strlen(u);
+            char host[128];
+            size_t host_len2 = authority_len;
+            if (host_len2 >= 128) host_len2 = 127;
+            kstd::strncpy(host, u, host_len2);
+            host[host_len2] = '\\0';
+            
+            uint16_t port = is_https ? 443 : 80;
+            char path[256];
+            if (slash) { kstd::strncpy(path, slash, sizeof(path) - 1); path[sizeof(path)-1] = '\\0'; }
+            else { path[0] = '/'; path[1] = '\\0'; }
+            
+            uint8_t target_ip[4];
+            bool resolved = net::parse_ip(host, target_ip);
+            if (!resolved && net::is_available()) resolved = net::dns_resolve(host, target_ip, 3000);
+            
+            if (resolved) {
+                constexpr size_t cap = 65536;
+                char* buf = static_cast<char*>(kmalloc(cap));
+                if (buf) {
+                    int n = 0;
+                    if (is_https) n = tls::https_get(target_ip, port, host, path, buf, cap - 1, 10000);
+                    else n = net::http_get(target_ip, port, path, buf, cap - 1, 4000, host);
+                    
+                    if (n > 0) {
+                        // Find body (after \\r\\n\\r\\n)
+                        char* body = nullptr;
+                        for (int i = 0; i < n - 3; ++i) {
+                            if (buf[i] == '\\r' && buf[i+1] == '\\n' && buf[i+2] == '\\r' && buf[i+3] == '\\n') {
+                                body = buf + i + 4;
+                                break;
+                            }
+                        }
+                        if (body) {
+                            size_t body_len = n - (body - buf);
+                            gfx::Image img = {};
+                            if (gfx::load_image_from_memory(reinterpret_cast<const uint8_t*>(body), body_len, &img)) {
+                                gfx::draw_image_scaled(img, screen_x, screen_y, box.w, box.h);
+                                delete[] img.pixels;
+                            }
+                        }
+                    }
+                    kfree(buf);
+                }
+            }
+            
+            // Fallback placeholder
+            if (box.text[0]) {
+                gfx::draw_string(box.text, screen_x + 4, screen_y + (box.h - 10) / 2, box.fg_color);
+            }
+            continue;
+        }
         if (box.is_button || box.is_input) {
             uint32_t bg = box.has_bg ? box.bg_color
                                      : (box.is_hovered ? 0xFF2A5C8A : 0xFF183B5E);

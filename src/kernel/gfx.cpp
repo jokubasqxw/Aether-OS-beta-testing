@@ -613,8 +613,32 @@ bool load_png_file(const uint8_t* data, size_t size, uint32_t** out_pixels, uint
     return true;
 }
 
+bool load_image_from_memory(const uint8_t* data, size_t size, Image* img) {
+    if (!data || size == 0 || !img) return false;
+    
+    uint32_t* pixels = nullptr;
+    uint32_t w = 0, h = 0;
+    
+    // Try BMP first
+    if (load_bmp_file(data, size, &pixels, &w, &h)) {
+        img->pixels = pixels;
+        img->width = w;
+        img->height = h;
+        return true;
+    }
+    
+    // Try PNG
+    if (load_png_file(data, size, &pixels, &w, &h)) {
+        img->pixels = pixels;
+        img->width = w;
+        img->height = h;
+        return true;
+    }
+    
+    return false;
+}
+
 bool load_image(const char* path, Image* img) {
-    // Read file from disk
     uint8_t* file_data = nullptr;
     uint32_t file_size = 0;
 

@@ -81,6 +81,7 @@ struct Image {
 };
 
 bool load_image(const char* path, Image* img);
+bool load_image_from_memory(const uint8_t* data, size_t size, Image* img);
 void draw_image(const Image& img, int x, int y);
 void draw_image_scaled(const Image& img, int x, int y, uint32_t w, uint32_t h);
 
