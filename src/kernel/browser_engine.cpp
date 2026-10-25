@@ -1779,6 +1779,21 @@ char src_val[128] = {0};
         size_t text_len = static_cast<size_t>(p - text_start);
         if (text_len == 0) continue;
         if (hidden_depth > 0) continue;
+        
+        // Check if text is only whitespace
+        bool only_ws = true;
+        for (size_t i = 0; i < text_len; ++i) {
+            if (text_start[i] != ' ' && text_start[i] != '\\t' && text_start[i] != '\\r' && text_start[i] != '\\n') {
+                only_ws = false;
+                break;
+            }
+        }
+        
+        if (only_ws) {
+            // Add a space between inline elements
+            if (cur_x > base_left) cur_x += 8;
+            continue;
+        }
 
         char raw_text[256];
         size_t copy_len = text_len < 255 ? text_len : 255;
