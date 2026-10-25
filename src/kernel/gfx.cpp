@@ -2,6 +2,9 @@
 #include "gfx_driver.hpp"
 #include "font.hpp"
 #include "kstring.hpp"
+#include "aetherfs.hpp"
+#include "fat16.hpp"
+#include "inflate.hpp"
 
 namespace gfx {
 
@@ -407,6 +410,307 @@ void draw_string_scaled(const char* str, int x, int y, uint32_t fg, int scale) {
             curr_x += 8 * scale;
         }
         str++;
+    }
+}
+
+// Image loading and drawing
+bool load_bmp_file(const uint8_t* data, size_t size, uint32_t** out_pixels, uint32_t* out_w, uint32_t* out_h) {
+    // Simple BMP parser - supports 24-bit and 32-bit BMP
+    if (size < 54) return false;  // Minimum BMP header size
+
+    // Check BMP signature
+    if (data[0] != 'B' || data[1] != 'M') return false;
+
+    // Read BMP header
+    uint32_t file_size = *(uint32_t*)(data + 2);
+    uint32_t offset = *(uint32_t*)(data + 10);
+    uint32_t width = *(uint32_t*)(data + 18);
+    uint32_t height = *(uint32_t*)(data + 22);
+    uint16_t bpp = *(uint16_t*)(data + 28);
+    uint16_t compression = *(uint16_t*)(data + 30);
+
+    if (bpp != 24 && bpp != 32) return false;  // Only 24/32-bit supported
+    if (compression != 0) return false;  // No compression supported
+
+    *out_w = width;
+    *out_h = height;
+
+    // Calculate row size (must be multiple of 4)
+    uint32_t row_size = (width * bpp / 8 + 3) & ~3;
+
+    // Allocate pixel buffer
+    uint32_t* pixels = new uint32_t[width * height];
+    if (!pixels) return false;
+
+    // Read pixel data
+    const uint8_t* src = data + offset;
+    for (uint32_t y = 0; y < height; y++) {
+        // BMP stores rows bottom-to-top, flip vertically
+        uint32_t src_y = (height - 1 - y) * row_size;
+
+        for (uint32_t x = 0; x < width; x++) {
+            uint8_t b = src[src_y + x * (bpp / 8) + 0];
+            uint8_t g = src[src_y + x * (bpp / 8) + 1];
+            uint8_t r = src[src_y + x * (bpp / 8) + 2];
+            uint8_t a = (bpp == 32) ? src[src_y + x * (bpp / 8) + 3] : 255;
+
+            // Convert BGR/BGRA to ARGB
+            uint32_t color = (a << 24) | (r << 16) | (g << 8) | b;
+            pixels[y * width + x] = color;
+        }
+    }
+
+    *out_pixels = pixels;
+    return true;
+}
+
+// PNG loader - supports RGB (type 2) and RGBA (type 6) with 8-bit depth
+bool load_png_file(const uint8_t* data, size_t size, uint32_t** out_pixels, uint32_t* out_w, uint32_t* out_h) {
+    // Check PNG signature
+    static const uint8_t png_sig[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    if (size < 8) return false;
+    for (int i = 0; i < 8; ++i) {
+        if (data[i] != png_sig[i]) return false;
+    }
+    
+    size_t pos = 8;  // Skip signature
+    uint32_t width = 0, height = 0;
+    uint8_t bit_depth = 0, color_type = 0;
+    uint8_t* idat_data = nullptr;
+    size_t idat_size = 0;
+    size_t idat_cap = 0;
+    
+    // Parse chunks
+    while (pos + 12 <= size) {
+        uint32_t chunk_len = (data[pos] << 24) | (data[pos+1] << 16) | (data[pos+2] << 8) | data[pos+3];
+        pos += 4;
+        char chunk_type[5] = {static_cast<char>(data[pos]), static_cast<char>(data[pos+1]), static_cast<char>(data[pos+2]), static_cast<char>(data[pos+3]), '\0'};
+        pos += 4;
+        
+        if (kstd::strcmp(chunk_type, "IHDR") == 0 && chunk_len >= 13) {
+            width = (data[pos] << 24) | (data[pos+1] << 16) | (data[pos+2] << 8) | data[pos+3];
+            height = (data[pos+4] << 24) | (data[pos+5] << 16) | (data[pos+6] << 8) | data[pos+7];
+            bit_depth = data[pos+8];
+            color_type = data[pos+9];
+            if (data[pos+12] != 0) {  // interlace not supported
+                if (idat_data) delete[] idat_data;
+                return false;
+            }
+        } else if (kstd::strcmp(chunk_type, "IDAT") == 0) {
+            if (idat_size + chunk_len > idat_cap) {
+                size_t new_cap = idat_cap == 0 ? chunk_len * 2 : idat_cap * 2;
+                if (new_cap < idat_size + chunk_len) new_cap = idat_size + chunk_len;
+                uint8_t* new_data = new uint8_t[new_cap];
+                if (idat_data) {
+                    for (size_t i = 0; i < idat_size; ++i) new_data[i] = idat_data[i];
+                    delete[] idat_data;
+                }
+                idat_data = new_data;
+                idat_cap = new_cap;
+            }
+            for (size_t i = 0; i < chunk_len; ++i) {
+                idat_data[idat_size + i] = data[pos + i];
+            }
+            idat_size += chunk_len;
+        } else if (kstd::strcmp(chunk_type, "IEND") == 0) {
+            break;
+        }
+        
+        pos += chunk_len + 4;  // Skip data + CRC
+    }
+    
+    if (width == 0 || height == 0 || bit_depth != 8) {
+        if (idat_data) delete[] idat_data;
+        return false;
+    }
+    if (color_type != 2 && color_type != 6) {
+        if (idat_data) delete[] idat_data;
+        return false;
+    }
+    
+    int channels = (color_type == 2) ? 3 : 4;
+    size_t bytes_per_pixel = channels;
+    size_t stride = width * bytes_per_pixel;
+    
+    // Decompress IDAT data
+    size_t out_cap = stride * height + height;
+    uint8_t* decompressed = new uint8_t[out_cap];
+    if (!decompressed) {
+        if (idat_data) delete[] idat_data;
+        return false;
+    }
+    
+    size_t decompressed_size = inflate::decompress(idat_data, idat_size, decompressed, out_cap);
+    if (idat_data) delete[] idat_data;
+    
+    if (decompressed_size == 0) {
+        delete[] decompressed;
+        return false;
+    }
+    
+    // Apply PNG filters and convert to ARGB
+    uint32_t* pixels = new uint32_t[width * height];
+    if (!pixels) {
+        delete[] decompressed;
+        return false;
+    }
+    
+    uint8_t* prev_row = new uint8_t[stride];
+    for (size_t i = 0; i < stride; ++i) prev_row[i] = 0;
+    
+    size_t src_pos = 0;
+    for (uint32_t y = 0; y < height; ++y) {
+        uint8_t filter = decompressed[src_pos++];
+        uint8_t* row = decompressed + src_pos;
+        src_pos += stride;
+        
+        uint8_t* filtered = new uint8_t[stride];
+        for (size_t x = 0; x < stride; ++x) {
+            uint8_t left = (x >= bytes_per_pixel) ? filtered[x - bytes_per_pixel] : 0;
+            uint8_t up = prev_row[x];
+            uint8_t up_left = (x >= bytes_per_pixel) ? prev_row[x - bytes_per_pixel] : 0;
+            
+            switch (filter) {
+                case 0: filtered[x] = row[x]; break;
+                case 1: filtered[x] = row[x] + left; break;
+                case 2: filtered[x] = row[x] + up; break;
+                case 3: filtered[x] = row[x] + (left + up) / 2; break;
+                case 4: {
+                    int p = left + up - up_left;
+                    int pa = (p > left) ? (p - left) : (left - p);
+                    int pb = (p > up) ? (p - up) : (up - p);
+                    int pc = (p > up_left) ? (p - up_left) : (up_left - p);
+                    uint8_t predictor;
+                    if (pa <= pb && pa <= pc) predictor = left;
+                    else if (pb <= pc) predictor = up;
+                    else predictor = up_left;
+                    filtered[x] = row[x] + predictor;
+                    break;
+                }
+                default: filtered[x] = row[x]; break;
+            }
+        }
+        
+        for (uint32_t x = 0; x < width; ++x) {
+            size_t idx = x * bytes_per_pixel;
+            uint8_t r = filtered[idx];
+            uint8_t g = filtered[idx + 1];
+            uint8_t b = filtered[idx + 2];
+            uint8_t a = (channels == 4) ? filtered[idx + 3] : 255;
+            pixels[y * width + x] = (a << 24) | (r << 16) | (g << 8) | b;
+        }
+        
+        for (size_t i = 0; i < stride; ++i) prev_row[i] = filtered[i];
+        delete[] filtered;
+    }
+    
+    delete[] prev_row;
+    delete[] decompressed;
+    
+    *out_pixels = pixels;
+    *out_w = width;
+    *out_h = height;
+    return true;
+}
+
+bool load_image(const char* path, Image* img) {
+    // Read file from disk
+    uint8_t* file_data = nullptr;
+    uint32_t file_size = 0;
+
+    // Try AetherFS
+    if (aetherfs::mounted()) {
+        file_size = aetherfs::file_size(path);
+        if (file_size > 0) {
+            file_data = new uint8_t[file_size];
+            if (aetherfs::read_file(path, file_data, file_size) > 0) {
+                if (load_bmp_file(file_data, file_size, &img->pixels, &img->width, &img->height) ||
+                    load_png_file(file_data, file_size, &img->pixels, &img->width, &img->height)) {
+                    delete[] file_data;
+                    return true;
+                }
+            }
+            delete[] file_data;
+            return false;
+        }
+    }
+
+    // Try FAT16
+    if (fat16::mounted()) {
+        file_size = fat16::file_size(path);
+        if (file_size > 0) {
+            file_data = new uint8_t[file_size];
+            if (fat16::read_file(path, file_data, file_size) > 0) {
+                if (load_bmp_file(file_data, file_size, &img->pixels, &img->width, &img->height) ||
+                    load_png_file(file_data, file_size, &img->pixels, &img->width, &img->height)) {
+                    delete[] file_data;
+                    return true;
+                }
+            }
+            delete[] file_data;
+            return false;
+        }
+    }
+
+    return false;
+}
+
+void draw_image(const Image& img, int x, int y) {
+    if (x >= static_cast<int>(screen_width) || y >= static_cast<int>(screen_height)) return;
+    if (img.width == 0 || img.height == 0) return;
+
+    uint32_t draw_w = img.width;
+    uint32_t draw_h = img.height;
+    int draw_x = x;
+    int draw_y = y;
+
+    // Clip to screen
+    if (draw_x < 0) { draw_w += draw_x; draw_x = 0; }
+    if (draw_y < 0) { draw_h += draw_y; draw_y = 0; }
+    if (draw_x + draw_w > screen_width) draw_w = screen_width - draw_x;
+    if (draw_y + draw_h > screen_height) draw_h = screen_height - draw_y;
+    if (draw_w == 0 || draw_h == 0) return;
+
+    uint32_t* buf = get_render_target();
+    for (uint32_t row = 0; row < draw_h; row++) {
+        for (uint32_t col = 0; col < draw_w; col++) {
+            uint32_t src_idx = (row * img.width + col);
+            uint32_t dst_idx = ((row + draw_y) * screen_width) + (col + draw_x);
+            buf[dst_idx] = img.pixels[src_idx];
+        }
+    }
+}
+
+void draw_image_scaled(const Image& img, int x, int y, uint32_t w, uint32_t h) {
+    if (img.width == 0 || img.height == 0) return;
+    if (w == 0 || h == 0) return;
+
+    uint32_t draw_w = w;
+    uint32_t draw_h = h;
+    int draw_x = x;
+    int draw_y = y;
+
+    // Clip to screen
+    if (draw_x < 0) { draw_w += draw_x; draw_x = 0; }
+    if (draw_y < 0) { draw_h += draw_y; draw_y = 0; }
+    if (draw_x + draw_w > screen_width) draw_w = screen_width - draw_x;
+    if (draw_y + draw_h > screen_height) draw_h = screen_height - draw_y;
+    if (draw_w == 0 || draw_h == 0) return;
+
+    float scale_x = static_cast<float>(draw_w) / img.width;
+    float scale_y = static_cast<float>(draw_h) / img.height;
+
+    uint32_t* buf = get_render_target();
+    for (uint32_t row = 0; row < draw_h; row++) {
+        for (uint32_t col = 0; col < draw_w; col++) {
+            uint32_t src_x = static_cast<uint32_t>(col / scale_x);
+            uint32_t src_y = static_cast<uint32_t>(row / scale_y);
+            if (src_x >= img.width) src_x = img.width - 1;
+            if (src_y >= img.height) src_y = img.height - 1;
+            uint32_t src_idx = (src_y * img.width + src_x);
+            uint32_t dst_idx = (row * screen_width) + (col + draw_x);
+            buf[dst_idx] = img.pixels[src_idx];
+        }
     }
 }
 
