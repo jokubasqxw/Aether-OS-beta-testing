@@ -699,10 +699,22 @@ static void apply_decl(Style& st, const char* prop, size_t plen, const char* val
             }
         }
     } else if (ci("font-size")) {
-        int px = parse_px(val, vlen);
+        // Check for percentage values (e.g. "83%") - ignore them, use base size
+        bool is_pct = false;
+        for (size_t k = 0; k < vlen; ++k) {
+            if (val[k] == '%') { is_pct = true; break; }
+        }
+        // Handle CSS keywords
+        int px = 0;
+        if (ci_starts(val, vlen, "small")) px = 12;
+        else if (ci_starts(val, vlen, "medium")) px = 16;
+        else if (ci_starts(val, vlen, "large")) px = 18;
+        else if (ci_starts(val, vlen, "x-large")) px = 24;
+        else if (ci_starts(val, vlen, "xx-large")) px = 32;
+        else if (!is_pct) px = parse_px(val, vlen);
         // Clamp font sizes to reasonable range (base 8x16 font)
         // Map CSS px to scale: 1x=16px, 2x=32px, 3x=48px, etc.
-        if (px <= 16) st.font_scale = 0;
+        if (px <= 0 || px <= 16) st.font_scale = 0;
         else if (px <= 24) st.font_scale = 1;
         else if (px <= 40) st.font_scale = 2;
         else if (px <= 56) st.font_scale = 3;
@@ -1604,12 +1616,12 @@ bool parse_html(Document* doc, const char* html, size_t len) {
                         ib->h = 26;
                         ib->has_bg = true;
                         ib->bg_color = cur_style.has_bg ? cur_style.bg
-                                      : (submit ? 0xFF2563EB : 0xFF0F172A);
+                                                              : (submit ? 0xFF2563EB : 0xFFFFFFFF);
                         ib->has_border = true;
                         ib->border_color = cur_style.has_border ? cur_style.border
-                                         : (submit ? 0xFF60A5FA : 0xFF475569);
+                                                             : (submit ? 0xFF60A5FA : 0xFFD2D2D2);
                         ib->fg_color = cur_style.has_fg ? cur_style.fg
-                                     : (submit ? gfx::Colors::White : 0xFF94A3B8);
+                                                             : (submit ? gfx::Colors::White : 0xFF1F1F1F);
                         cur_x += w + 6;
                     }
                     current_tag = TagType::UNKNOWN;
