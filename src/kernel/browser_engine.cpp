@@ -9,6 +9,12 @@
 #include "inflate.hpp"
 #include "tls.hpp"
 
+// Flex layout state (global for access from helper functions)
+static bool g_in_flex = false;
+static int g_flex_start_y = 0;
+static int g_flex_cur_x = 0;
+static int g_flex_max_h = 0;
+
 namespace browser {
 
 const char* DomNode::get_attribute(const char* name) const {
@@ -986,11 +992,16 @@ static void add_wrapped_text(Document* doc, const char* text, int& cur_x, int& c
         LayoutBox* box = add_box(doc);
         if (!box) return;
 
-        box->x = cur_x;
-        box->y = cur_y;
+        box->x = g_in_flex ? g_flex_cur_x : cur_x;
+        box->y = g_in_flex ? g_flex_start_y : cur_y;
         box->w = word_px;
         box->h = is_btn ? 22 : 18 * scale;
         box->scale = static_cast<uint8_t>(scale);
+        
+        if (g_in_flex) {
+            g_flex_cur_x += box->w + 8;
+            if (box->h > g_flex_max_h) g_flex_max_h = box->h;
+        }
         box->fg_color = fg;
         box->is_bold = bold;
         box->is_underline = underline;
@@ -1063,6 +1074,12 @@ bool parse_html(Document* doc, const char* html, size_t len) {
     bool in_list = false;
     bool in_ol = false;
     int ol_counter = 1;
+    
+    // Flex layout tracking
+    bool& in_flex = g_in_flex;
+    int& flex_start_y = g_flex_start_y;
+    int& flex_max_h = g_flex_max_h;
+    int& flex_cur_x = g_flex_cur_x;
 
     // ---- Simple table layout: buffer one row, then emit equal-width cells ----
     constexpr int TABLE_COLS = 8;
@@ -1405,6 +1422,14 @@ char src_val[128] = {0};
                     layout_pad[style_top] = frame_pad;
                     style_stack[style_top++] = st;
                 }
+                
+                // Track flex containers
+                if (st.display_flex && !is_closing) {
+                    g_in_flex = true;
+                    g_flex_start_y = cur_y;
+                    g_flex_cur_x = cur_x;
+                    g_flex_max_h = 0;
+                }
 
                 if (tag == TagType::BODY || tag == TagType::HTML) {
                     if (st.has_bg) {
@@ -1447,7 +1472,12 @@ char src_val[128] = {0};
 
             // Handle Tags
             if (is_closing) {
-                // Close any open background/border panel for this element.
+                // Close flex container
+                if (g_in_flex && tag == TagType::DIV) {
+                    g_in_flex = false;
+                    cur_x = base_left;
+                    cur_y = g_flex_start_y + g_flex_max_h + 8;
+                }
                 if (bg_top > 0 && bg_stack[bg_top - 1].tag == tag) {
                     int idx = bg_stack[bg_top - 1].box;
                     int pad = (style_top > 0) ? layout_pad[style_top - 1] : 0;
@@ -1624,8 +1654,8 @@ char src_val[128] = {0};
                         ib->is_input = true;
                         ib->is_button = submit;
                         ib->is_clickable = submit;
-                        ib->x = cur_x;
-                        ib->y = cur_y;
+                        ib->x = g_in_flex ? g_flex_cur_x : cur_x;
+                        ib->y = g_in_flex ? g_flex_start_y : cur_y;
                         ib->w = w;
                         ib->h = 26;
                         ib->has_bg = true;
@@ -1655,8 +1685,8 @@ char src_val[128] = {0};
                     LayoutBox* ib = add_box(doc);
                     if (ib) {
                         ib->type = BoxType::TEXT;
-                        ib->x = cur_x;
-                        ib->y = cur_y;
+                        ib->x = g_in_flex ? g_flex_cur_x : cur_x;
+                        ib->y = g_in_flex ? g_flex_start_y : cur_y;
                         ib->w = iw;
                         ib->h = ih;
                         ib->has_bg = true;
@@ -1859,8 +1889,8 @@ char src_val[128] = {0};
                 LayoutBox* box = add_box(doc);
                 if (box) {
                     box->type = BoxType::CODE_BOX;
-                    box->x = cur_x;
-                    box->y = cur_y;
+                    box->x = g_in_flex ? g_flex_cur_x : cur_x;
+                    box->y = g_in_flex ? g_flex_start_y : cur_y;
                     box->w = static_cast<int>(line_len * 8 + 12);
                     box->h = 18;
                     box->bg_color = 0xFF08121C;
